@@ -230,3 +230,4 @@ do
 		let vlan=vlan+1
 	done
 done
+brconfig bridge128 add trunk128

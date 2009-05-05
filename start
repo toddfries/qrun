@@ -1,0 +1,232 @@
+#!/bin/sh
+
+loadconf() {
+	local conf="$1"
+	temphd=$(sed -e 's/#.*//' \
+				-e '/^[::space::]*$/d' \
+				-e '/^template /!d' \
+				-e 's/^template //' $conf)
+	if [ "$temphd" ]; then
+		templatehd="$temphd"
+	fi
+	utmp=$(sed -e 's/#.*//' \
+				-e '/^[::space::]*$/d' \
+				-e '/^user /!d' \
+				-e 's/^user //' $conf)
+	if [ "$utmp" ]; then
+		user="$utmp"
+	fi
+	default=$(sed -e 's/#.*//' \
+				-e '/^[::space::]*$/d' \
+				-e '/^default /!d' \
+				-e 's/^default //' $conf)
+	case "$default" in
+	start) default="";;
+	*) default="-S";;
+	esac
+
+	set -A hosts
+	set -A mds
+	set -A hostmem
+	totalhosts=0
+
+	c=0
+	for line in $(sed -e 's/#.*//' \
+	    -e '/^[::space::]*$/d' \
+	    -e '/^host /!d' \
+	    -e 's/^host //' \
+	    -e 's/ /_/g' $conf)
+	do
+		i=0
+		local v
+		let v=c
+		let c=c+1
+		#echo "parsing $line"
+		set -A hostinfo $(echo "$line"| sed 's/_/ /g')
+		hdlist=""
+		while [ i -lt ${#hostinfo[*]} ]
+		do
+			hi="${hostinfo[$i]}"
+			let i=i+1
+			#echo "v=$v c=$c i=$i hostinfo=$hi"
+			if [ i -eq 1 ]; then
+				hosts[$v]=$hi
+				continue
+			fi
+			if [ i -eq 2 ]; then
+				hostmem[$v]=$hi
+				continue
+			fi
+			hdlist="$hdlist $hi"
+		done
+		vlans[$v]=$hdlist
+	done
+	c=0
+	for line in $(sed -e 's/#.*//' \
+	    -e '/^[::space::]*$/d' \
+	    -e '/^native /!d' \
+	    -e 's/^native //' \
+	    -e 's/ /_/g' $conf)
+	do
+		i=0
+		local v
+		let v=c
+		let c=c+1
+		set -A hostinfo $line
+		vlist=""
+		while [ i -lt ${#hostinfo[*]} ]
+		do
+			vi="${hostinfo[$i]}"
+			let i=i+1
+			if [ i -eq 1 ]; then
+				nativeint[$c]=$vi
+				continue
+			fi
+			vlist="$vlist $vi"
+		done
+		nativevlan[$c]=$vlist
+	done
+}
+
+user=_qemu
+
+if [ "$1" -a -f "$1" ]; then
+	loadconf "$1"
+else
+	loadconf cfg
+fi
+
+if ! grep closefrom_override /etc/sudoers > /dev/null 2>&1; then
+	echo "WARNING: Something like: Defaults closefrom_override"
+	echo "WARNING: must be added to /etc/sudoers for useable network"
+	echo "WARNING: interfaces.."
+fi
+
+qemu=/usr/local/bin/qemu
+baseport=30000
+baseportoff=256 # limits qemu instance count
+basephys=128
+basephysoff=$baseportoff # limits qemu instance + vlan count
+i=0
+set -A dim $(xdpyinfo | awk '/dimensions:/ {sub("x"," ",$2);print $2;}')
+#typeset -i16 x
+echo "default local {"
+echo "               type host; host 127.0.0.1; portbase $baseport; portinc 1;"
+echo "}"
+
+ifconfig trunk128 create > /dev/null 2>&1
+ifconfig trunk128 up
+
+openterms() {
+	local host=$1
+	local xinc=$((${dim[0]}/5+10))
+	local yinc=$((${dim[1]}/(${#hosts[*]}+2)))
+	local xoff=0
+	local yoff=$((yinc*host))
+	local ytext=$((yinc/7 - 1))
+	local xtext=$(((xinc*5-1)/2/6-5))
+	if [ xtext -gt 80 ]; then
+		xtext=80
+		let xinc2=xinc+405
+	else
+		xinc2=$(( (${dim[0]}-xinc)/2 ))
+	fi
+	xterm -T "${hn} monitor" \
+		-xrm "xterm.vt100.geometry: 42x${ytext}+${xoff}+${yoff}" \
+		-e sh -c \
+		"while read blah; do console ${hn}.mon; sleep 5; done" &
+	let xoff=xinc
+	xterm -T "${hn} console" \
+		-xrm "xterm.vt100.geometry: ${xtext}x${ytext}+${xoff}+${yoff}" \
+		-e sh -c \
+		"while read blah; do console ${hn}; sleep 5; done" &
+	let xoff=xinc2
+	xterm -T "${hn} console" \
+		-xrm "xterm.vt100.geometry: ${xtext}x${ytext}+${xoff}+${yoff}" \
+		-e sh -c \
+		"while read blah; do ssh root@fe80::5054:1ff:fe00:$(printf "%02x%02x" $i 0)%trunk128; sleep 5; done" &
+}
+	
+
+while [ i -lt ${#hosts[*]} ]
+do
+	hn=${hosts[$i]}
+	#echo "$i: Hostname: $hn Memory: ${hostmem[$i]} Vlans: ${vlans[$i]}"
+	if ! [ -f ${hn}.hd ]; then
+		qemu-img create -b $templatehd -f qcow2 ${hn}.hd
+	fi
+
+	openterms $i
+
+	# Do not start qemu if something is already using the hd image
+	l=$(fstat ${hn}.hd | wc -l)
+	if [ l -gt 1 ]; then
+		let i=i+1
+		continue
+	fi
+	serport=$((i+baseport))
+	monport=$((i+baseport+baseportoff))
+	echo "console $hn { include local; port $i; }"
+	echo "console ${hn}.mon { include local; port $((i+baseportoff)); }"
+	x=$i
+
+	set -A myvlans 0 $(echo ${vlans[$i]} | sed 's/  / /g;s/^ //')
+	vlan=0
+	netargs=""
+	rdrargs=""
+	while [ vlan -lt ${#myvlans[*]} ]
+	do
+		thisvlan=${myvlans[$vlan]}
+		thisfd=$((vlan+3))
+
+		# tun port, unique per qemu instance
+		tportno=$((basephys+basephysoff*i+thisvlan))
+		if ! [ -c /dev/tun$tportno ]; then
+			(
+				cd /dev
+				sh ./MAKEDEV tun$tportno
+			)
+		fi
+
+		# bridge port unique per vlan
+		bportno=$((basephys+thisvlan))
+		#echo "Creating tun$tportno bridge$bportno"
+		ifconfig tun$tportno link0
+		ifconfig bridge$bportno create > /dev/null 2>&1
+		brconfig bridge$bportno add tun$tportno up > /dev/null 2>&1
+		netargs="$netargs -net nic,vlan=$vlan,model=rtl8139,macaddr=52:54:01:00:$(printf "%02x" $x):$(printf "%02x" $vlan)"
+		netargs="$netargs -net tap,vlan=$vlan,fd=$thisfd"
+		rdrargs="$rdrargs $thisfd<> /dev/tun$tportno"
+		let vlan=vlan+1
+	done
+
+	chown $user ${hn}.hd $templatehd
+	#echo "rdargs = $rdrargs"
+	sh -c "sudo -C $((thisfd+1)) -u $user $qemu $default \
+		-nographic \
+		-daemonize \
+		$netargs \
+		-m ${hostmem[$i]} \
+		-hda `pwd`/${hn}.hd \
+		-serial telnet:127.0.0.1:$serport,server,nowait \
+		-monitor telnet:127.0.0.1:$monport,server,nowait $rdrargs"
+	let i=i+1
+done
+
+# setup native ethernet ports to the virtual network
+while [ i -lt ${#nativeint[*]} ]
+do
+	vn=${nativeint[$i]}
+	set -A myvlans ${nativevlan[$i]}
+	vlan=0
+	while [ vlan -lt ${#myvlans[*]} ]
+	do
+		thisvlan=${myvlans[$vlan]}
+
+		# bridge port unique per vlan
+		bportno=$((basephys+thisvlan))
+		ifconfig bridge$bportno create > /dev/null 2>&1
+		brconfig bridge$bportno add $vn up > /dev/null 2>&1
+		let vlan=vlan+1
+	done
+done

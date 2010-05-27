@@ -67,7 +67,6 @@ done
 tunif=tun$i
 ifconfig $tunif create
 ifconfig $tunif link0
-ifconfig $tunif $netcfg
 qemu="qemu"
 if [ "$mode" ]; then
 	case "$mode" in

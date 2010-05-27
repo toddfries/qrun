@@ -1,10 +1,11 @@
 #
 
 PROG=		fdpass
+SRCS=		fdpass.c
 SCRIPTS=	qemu-nat qemu-routed qemu-bridged
 NOMAN=
 
-BINDIR?=	${PREFIX}/sbin
+BINDIR?=	${TRUEPREFIX}/sbin
 
 beforeinstall:
 .for script in ${SCRIPTS}

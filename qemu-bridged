@@ -78,7 +78,7 @@ ifconfig bridge$i add $bridgeif
 ifconfig bridge$i up
 
 if [ "$user" ]; then
-	fdpass -u $user -f /dev/$tunif -n 3 $qemu $args
+	fdpass -u $user -f /dev/$tunif $qemu $args
 else
 	$qemu $args 3<>/dev/$tunif
 fi

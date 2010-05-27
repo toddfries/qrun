@@ -23,6 +23,7 @@ do
 	-imgsize) imagesize="$2"; shift;;
 	-i) bridgeif="$2"; shift;;
 	-cdboot) cdboot="$2"; shift;;
+	-mode) mode="$2"; shift;;
 	*) break;;
 	esac
 	shift
@@ -57,6 +58,12 @@ do
 	let i=i+1
 done
 export BRIDGE=bridge$i
-qemu $args
+qemu="qemu"
+if [ "$mode" ]; then
+	case "$mode" in
+	amd64) qemu="qemu-system-x86_64";;
+	esac
+fi
+$qemu $args
 ifconfig bridge$i down
 ifconfig bridge$i destroy

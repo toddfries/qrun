@@ -23,6 +23,7 @@ do
 	-imgsize) imagesize="$2"; shift;;
 	-netcfg) netcfg="$2"; shift;;
 	-cdboot) cdboot="$2"; shift;;
+	-mode) mode="$2"; shift;;
 	*) break;;
 	esac
 	shift
@@ -54,6 +55,14 @@ tunif=tun$i
 ifconfig $tunif create
 ifconfig $tunif link0
 ifconfig $tunif $netcfg
-qemu $args 3<>/dev/$tunif
+
+qemu="qemu"
+if [ "$mode" ]; then
+	case "$mode" in
+	amd64) qemu="qemu-system-x86_64";;
+	esac
+fi
+$qemu $args 3<>/dev/$tunif
 ifconfig tun$i down
 ifconfig tun$i destroy
+

@@ -52,9 +52,11 @@ args="$args -hda $image -net nic -net tap -no-fd-bootchk"
 args="$args -monitor stdio"
 export ETHER=$bridgeif
 i=0
-while [ -f /etc/hostname.bridge$i ]
+while ifconfig bridge$i > /dev/null 2>&1
 do
 	let i=i+1
 done
 export BRIDGE=bridge$i
 qemu $args
+ifconfig bridge$i down
+ifconfig bridge$i destroy

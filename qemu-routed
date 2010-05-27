@@ -21,7 +21,7 @@ do
 	case "$1" in
 	-img) image="$2"; shift;;
 	-imgsize) imagesize="$2"; shift;;
-	-netcfg) net="$2"; shift;;
+	-netcfg) netcfg="$2"; shift;;
 	-cdboot) cdboot="$2"; shift;;
 	*) break;;
 	esac
@@ -53,7 +53,7 @@ done
 tunif=tun$i
 ifconfig $tunif create
 ifconfig $tunif link0
-ifconfig $tunif $net
-qemu $args <>$tunif
+ifconfig $tunif $netcfg
+qemu $args 3<>/dev/$tunif
 ifconfig tun$i down
 ifconfig tun$i destroy

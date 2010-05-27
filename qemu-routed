@@ -24,6 +24,7 @@ do
 	-netcfg) netcfg="$2"; shift;;
 	-cdboot) cdboot="$2"; shift;;
 	-mode) mode="$2"; shift;;
+	-u) user="$2"; shift;;
 	*) break;;
 	esac
 	shift
@@ -62,7 +63,11 @@ if [ "$mode" ]; then
 	amd64) qemu="qemu-system-x86_64";;
 	esac
 fi
-$qemu $args 3<>/dev/$tunif
+if [ "$user" ]; then
+	fdpass -u $user -f /dev/$tunif -n 3 $qemu $args
+else
+	$qemu $args 3<>/dev/$tunif
+fi
 ifconfig tun$i down
 ifconfig tun$i destroy
 

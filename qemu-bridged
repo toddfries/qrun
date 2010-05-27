@@ -24,6 +24,7 @@ do
 	-i) bridgeif="$2"; shift;;
 	-cdboot) cdboot="$2"; shift;;
 	-mode) mode="$2"; shift;;
+	-u) user="$2"; shift;;
 	*) break;;
 	esac
 	shift
@@ -49,21 +50,44 @@ if [ "$cdboot" ]; then
 	args="$args -cdrom $cdboot -boot d"
 fi
 
-args="$args -hda $image -net nic -net tap -no-fd-bootchk"
+args="$args -hda $image -net nic -net tap,fd=3 -no-fd-bootchk"
 args="$args -monitor stdio"
-export ETHER=$bridgeif
 i=0
 while ifconfig bridge$i > /dev/null 2>&1
 do
 	let i=i+1
 done
-export BRIDGE=bridge$i
+bridge=bridge$i
+ifconfig $bridge create
+i=0
+while ifconfig tun$i > /dev/null 2>&1
+do
+	let i=i+1
+done
+tunif=tun$i
+ifconfig $tunif create
+ifconfig $tunif link0
+ifconfig $tunif $netcfg
 qemu="qemu"
 if [ "$mode" ]; then
 	case "$mode" in
 	amd64) qemu="qemu-system-x86_64";;
 	esac
 fi
-$qemu $args
+ifconfig bridge$i add tun$i
+ifconfig bridge$i add $bridgeif
+ifconfig bridge$i up
+
+if [ "$user" ]; then
+	fdpass -u $user -f /dev/$tunif -n 3 $qemu $args
+else
+	$qemu $args 3<>/dev/$tunif
+fi
+
+ifconfig bridge$i delete tun$i
+
+ifconfig tun$i down
+ifconfig tun$i destroy
+
 ifconfig bridge$i down
 ifconfig bridge$i destroy

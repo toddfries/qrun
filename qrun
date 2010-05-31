@@ -84,6 +84,7 @@ if [ "$bridge" ]; then
 	ifconfig $bridgeif up
 else
 	if [ "$netcfg" ]; then
+		args="$args -net nic -net tap,fd=3"
 		tunif=$(alloc_if tun)
 		ifconfig $tunif link0
 		ifconfig $tunif $netcfg

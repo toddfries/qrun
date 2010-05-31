@@ -15,6 +15,7 @@
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 imagesize="16G"
+memsize=""
 
 while [ "$1" ]
 do
@@ -26,6 +27,7 @@ do
 	-cdboot) cd="$2";cdboot=1; shift;;
 	-cd) cd="$2"; shift;;
 	-mode) mode="$2"; shift;;
+	-memsize) memsize="-m $2"; shift;;
 	-u) user="$2"; shift;;
 	-d) debug=1;;
 	*) break;;

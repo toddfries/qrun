@@ -27,6 +27,7 @@ do
 	-cd) cd="$2"; shift;;
 	-mode) mode="$2"; shift;;
 	-u) user="$2"; shift;;
+	-d) debug=1;;
 	*) break;;
 	esac
 	shift
@@ -67,7 +68,7 @@ fi
 args="$args -hda $image -no-fd-bootchk"
 args="$args -monitor stdio"
 if [ "$bridge" ]; then
-	args=$args -net nic -net tap,fd=3"
+	args="$args -net nic -net tap,fd=3"
 
 	bridgeif=$(alloc_if bridge)
 	ifconfig $bridgeif create
@@ -94,6 +95,9 @@ if [ "$mode" ]; then
 	esac
 fi
 
+if [ debug -gt 0 ]; then
+	echo "=> $qemu $args"
+fi
 
 if [ "$user" ]; then
 	if [ "$tunif" ]; then

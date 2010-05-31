@@ -99,20 +99,21 @@ if [ "$mode" ]; then
 fi
 
 if [ debug -gt 0 ]; then
-	echo "=> $qemu $args"
+	echo "=> $qemu $args $@"
 fi
 
 if [ "$user" ]; then
+	chown $user $image
 	if [ "$tunif" ]; then
-		fdpass -u $user -f /dev/$tunif $qemu $args
+		fdpass -u $user -f /dev/$tunif $qemu $args "$@"
 	else
-		fdpass -u $user $qemu $args
+		fdpass -u $user $qemu $args "$@"
 	fi
 else
 	if [ "$tunif" ]; then
-		$qemu $args 3<>/dev/$tunif
+		$qemu $args "$@" 3<>/dev/$tunif
 	else
-		$qemu $args
+		$qemu $args "$@"
 	fi
 fi
 

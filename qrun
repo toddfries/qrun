@@ -21,16 +21,17 @@ debug=0
 while [ "$1" ]
 do
 	case "$1" in
-	-imgsize) imagesize="$2"; shift;;
-	-img) image="$2"; shift;;
-	-bridge) bridge="$2"; shift;;
-	-netcfg) netcfg="$2"; shift;;
-	-cdboot) cd="$2";cdboot=1; shift;;
-	-cd) cd="$2"; shift;;
-	-mode) mode="$2"; shift;;
-	-memsize) memsize="-m $2"; shift;;
-	-u) user="$2"; shift;;
+	-b) bridge="$2"; shift;;
+	-C) cd="$2"; shift;;
+	-c) cd="$2";cdboot=1; shift;;
 	-d) debug=1;;
+	-i) image="$2"; shift;;
+	-M) mode="$2"; shift;;
+	-m) memsize="-m $2"; shift;;
+	-n) netcfg="$2"; shift;;
+	-s) imagesize="$2"; shift;;
+	-u) user="$2"; shift;;
+	--) shift;break;;
 	*) break;;
 	esac
 	shift

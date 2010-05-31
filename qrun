@@ -19,10 +19,12 @@ imagesize="16G"
 while [ "$1" ]
 do
 	case "$1" in
-	-img) image="$2"; shift;;
 	-imgsize) imagesize="$2"; shift;;
-	-i) bridgeif="$2"; shift;;
-	-cdboot) cdboot="$2"; shift;;
+	-img) image="$2"; shift;;
+	-bridge) bridge="$2"; shift;;
+	-netcfg) netcfg="$2"; shift;;
+	-cdboot) cd="$2";cdboot=1; shift;;
+	-cd) cd="$2"; shift;;
 	-mode) mode="$2"; shift;;
 	-u) user="$2"; shift;;
 	*) break;;
@@ -30,10 +32,14 @@ do
 	shift
 done
 
-if ! [ "$bridgeif" ]; then
-	echo "No bridgeif specified, use '-i em0' for example"
-	exit 1
-fi
+alloc_if() {
+	local i=0 type=$1
+	while ifconfig $type$i > /dev/null 2>&1
+	do
+		let i=i+1
+	done
+	echo $type$i
+}
 
 if ! [ "$image" ]; then
 	echo "No hard drive image specified, use '-img foo.hda' for example"
@@ -44,49 +50,75 @@ if ! [ -f "$image" ]; then
 	qemu-img create -f qcow2 $image $imagesize
 fi
 
-args=""
-
-if [ "$cdboot" ]; then
-	args="$args -cdrom $cdboot -boot d"
+if [ "$netcfg" -a "$bridge" ]; then
+	echo "Impossible, mixing routing and bridging"
+	exit 1
 fi
 
-args="$args -hda $image -net nic -net tap,fd=3 -no-fd-bootchk"
+args=""
+
+if [ "$cd" -a -f "$cd" ]; then
+	args="$args -cdrom $cd"
+fi
+if [ "$cdboot" ]; then
+	args="$args -boot d"
+fi
+
+args="$args -hda $image -no-fd-bootchk"
 args="$args -monitor stdio"
-i=0
-while ifconfig bridge$i > /dev/null 2>&1
-do
-	let i=i+1
-done
-bridge=bridge$i
-ifconfig $bridge create
-i=0
-while ifconfig tun$i > /dev/null 2>&1
-do
-	let i=i+1
-done
-tunif=tun$i
-ifconfig $tunif create
-ifconfig $tunif link0
+if [ "$bridge" ]; then
+	args=$args -net nic -net tap,fd=3"
+
+	bridgeif=$(alloc_if bridge)
+	ifconfig $bridgeif create
+
+	tunif=$(alloc_if tun)
+	ifconfig $tunif create
+	ifconfig $tunif link0
+
+	ifconfig $bridgeif add $tunif
+	ifconfig $bridgeif add $bridge
+	ifconfig $bridgeif up
+else
+	if [ "$netcfg" ]; then
+		tunif=$(alloc_if tun)
+		ifconfig $tunif create
+		ifconfig $tunif link0
+		ifconfig $tunif $netcfg
+	fi
+fi
 qemu="qemu"
 if [ "$mode" ]; then
 	case "$mode" in
 	amd64) qemu="qemu-system-x86_64";;
 	esac
 fi
-ifconfig bridge$i add tun$i
-ifconfig bridge$i add $bridgeif
-ifconfig bridge$i up
+
 
 if [ "$user" ]; then
-	fdpass -u $user -f /dev/$tunif $qemu $args
+	if [ "$tunif" ]; then
+		fdpass -u $user -f /dev/$tunif $qemu $args
+	else
+		fdpass -u $user $qemu $args
+	fi
 else
-	$qemu $args 3<>/dev/$tunif
+	if [ "$tunif" ]; then
+		$qemu $args 3<>/dev/$tunif
+	else
+		$qemu $args
+	fi
 fi
 
-ifconfig bridge$i delete tun$i
+if [ "$bridgeif" ]; then
+	ifconfig $bridgeif delete $tunif
+fi
 
-ifconfig tun$i down
-ifconfig tun$i destroy
+if [ "$tunif" ]; then
+	ifconfig $tunif down
+	ifconfig $tunif destroy
+fi
 
-ifconfig bridge$i down
-ifconfig bridge$i destroy
+if [ "$bridgeif" ]; then
+	ifconfig $bridgeif down
+	ifconfig $bridgeif destroy
+fi

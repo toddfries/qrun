@@ -16,6 +16,7 @@
 
 imagesize="16G"
 memsize=""
+debug=0
 
 while [ "$1" ]
 do
@@ -37,7 +38,7 @@ done
 
 alloc_if() {
 	local i=0 type=$1
-	while ifconfig $type$i > /dev/null 2>&1
+	while ! ifconfig $type$i create > /dev/null 2>&1
 	do
 		let i=i+1
 	done
@@ -73,11 +74,10 @@ if [ "$bridge" ]; then
 	args="$args -net nic -net tap,fd=3"
 
 	bridgeif=$(alloc_if bridge)
-	ifconfig $bridgeif create
 
 	tunif=$(alloc_if tun)
-	ifconfig $tunif create
 	ifconfig $tunif link0
+	ifconfig $tunif up
 
 	ifconfig $bridgeif add $tunif
 	ifconfig $bridgeif add $bridge
@@ -85,9 +85,9 @@ if [ "$bridge" ]; then
 else
 	if [ "$netcfg" ]; then
 		tunif=$(alloc_if tun)
-		ifconfig $tunif create
 		ifconfig $tunif link0
 		ifconfig $tunif $netcfg
+		ifconfig $tunif up
 	fi
 fi
 qemu="qemu"

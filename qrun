@@ -179,14 +179,19 @@ else
 		fi
 		let vlan=vlan+1
 	done
-	$qemu $args "$@" $rdrargs
+	eval $qemu $args "$@" $rdrargs
 fi
 
 vlan=0
 while [ vlan -lt vlancount ]
 do
 	if [ "${bridgeif[$vlan]}" ]; then
-		ifconfig ${bridgeif[$vlan]} delete ${tunif[$vlan]}
+		[ verbose -gt 0 ] && {
+			ifconfig ${bridgeif[$vlan]}
+			ifconfig ${tunif[$vlan]}
+		}
+		ifconfig ${bridgeif[$vlan]} del ${tunif[$vlan]}
+		[ verbose -gt 0 ] && ifconfig ${bridgeif[$vlan]}
 	fi
 
 	if [ "${tunif[$vlan]}" ]; then

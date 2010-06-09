@@ -121,20 +121,22 @@ fi
 args="$args -hda $image -no-fd-bootchk"
 args="$args -monitor stdio"
 if [ "${bridge[0]}" ]; then
-	for vlan in 0 # $vlans
+	vlan=0
+	while [ vlan -lt vlancount ]
 	do
 		fd=$((vlan+3))
 		args="$args -net nic,vlan=$vlan -net tap,vlan=$vlan,fd=$fd"
 
-		bridgeif=$(alloc_if bridge)
+		bridgeif[$vlan]=$(alloc_if bridge)
 
 		tunif[$vlan]=$(alloc_if tun)
 		ifconfig ${tunif[$vlan]} link0
 		ifconfig ${tunif[$vlan]} up
 
-		ifconfig $bridgeif add ${tunif[$vlan]}
-		ifconfig $bridgeif add ${bridge[0]}
-		ifconfig $bridgeif up
+		ifconfig ${bridgeif[$vlan]} add ${tunif[$vlan]}
+		ifconfig ${bridgeif[$vlan]} add ${bridge[vlan]}
+		ifconfig ${bridgeif[$vlan]} up
+		let vlan=vlan+1
 	done
 else
 	if [ "$netcfg" ]; then
@@ -156,31 +158,45 @@ if [ verbose -gt 0 ]; then
 	echo "=> $qemu $args $@"
 fi
 
+rdrargs=""
 if [ "$user" ]; then
 	chown $user $image
-	if [ "${tunif[0]}" ]; then
-		fdpass -u $user -f /dev/${tunif[0]} $qemu $args "$@"
-	else
-		fdpass -u $user $qemu $args "$@"
-	fi
+	vlan=0
+	while [ vlan -lt vlancount ]
+	do
+		if [ "${tunif[$vlan]}" ]; then
+			rdrargs="$rdrargs -f /dev/${tunif[$vlan]}"
+		fi
+		let vlan=vlan+1
+	done
+	fdpass -u $user $rdrargs $qemu $args "$@"
 else
-	if [ "${tunif[0]}" ]; then
-		$qemu $args "$@" 3<>/dev/${tunif[0]}
-	else
-		$qemu $args "$@"
+	vlan=0
+	while [ vlan -lt vlancount ]
+	do
+		if [ "${tunif[$vlan]}" ]; then
+			rdrargs="$rdrargs $((vlan+3))<>/dev/${tunif[$vlan]}"
+		fi
+		let vlan=vlan+1
+	done
+	$qemu $args "$@" $rdrargs
+fi
+
+vlan=0
+while [ vlan -lt vlancount ]
+do
+	if [ "${bridgeif[$vlan]}" ]; then
+		ifconfig ${bridgeif[$vlan]} delete ${tunif[$vlan]}
 	fi
-fi
 
-if [ "$bridgeif" ]; then
-	ifconfig $bridgeif delete ${tunif[0]}
-fi
+	if [ "${tunif[$vlan]}" ]; then
+		ifconfig ${tunif[$vlan]} down
+		ifconfig ${tunif[$vlan]} destroy
+	fi
 
-if [ "${tunif[0]}" ]; then
-	ifconfig ${tunif[0]} down
-	ifconfig ${tunif[0]} destroy
-fi
-
-if [ "$bridgeif" ]; then
-	ifconfig $bridgeif down
-	ifconfig $bridgeif destroy
-fi
+	if [ "${bridgeif[$vlan]}" ]; then
+		ifconfig ${bridgeif[$vlan]} down
+		ifconfig ${bridgeif[$vlan]} destroy
+	fi
+	let vlan=vlan+1
+done

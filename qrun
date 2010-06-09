@@ -50,7 +50,7 @@ do
 	-i) image="$2"; shift;;
 	-M) mode="$2"; shift;;
 	-m) memsize="-m $2"; shift;;
-	-n) netcfg="$2"; shift;;
+	-n) netcfg[$vlancount]="$2"; let vlancount=vlancount+1; shift;;
 	-s) imagesize="$2"; shift;;
 	-o)
 		case "$2" in
@@ -104,11 +104,6 @@ if ! [ -f "$image" ]; then
 	qemu-img create -f qcow2 $image $imagesize
 fi
 
-if [ "$netcfg" -a "${bridge[0]}" ]; then
-	echo "Impossible, mixing routing and bridging"
-	exit 1
-fi
-
 args=""
 
 if [ "$cd" -a -f "$cd" ]; then
@@ -120,12 +115,19 @@ fi
 
 args="$args -hda $image -no-fd-bootchk"
 args="$args -monitor stdio"
-if [ "${bridge[0]}" ]; then
-	vlan=0
-	while [ vlan -lt vlancount ]
-	do
+vlan=0
+while [ vlan -lt vlancount ]
+do
+	if [ "${bridge[$vlan]}" ]; then
 		fd=$((vlan+3))
-		args="$args -net nic,vlan=$vlan -net tap,vlan=$vlan,fd=$fd"
+		nicargs="nic,vlan=$vlan"
+		if [ "${model[$vlan]}" ]; then
+			nicargs="$nicargs,model=${model[$vlan]}"
+		fi
+		if [ "${macaddr[$vlan]}" ]; then
+			nicargs="$nicargs,macaddr=${macaddr[$vlan]}"
+		fi
+		args="$args -net $nicargs -net tap,vlan=$vlan,fd=$fd"
 
 		bridgeif[$vlan]=$(alloc_if bridge)
 
@@ -136,17 +138,17 @@ if [ "${bridge[0]}" ]; then
 		ifconfig ${bridgeif[$vlan]} add ${tunif[$vlan]}
 		ifconfig ${bridgeif[$vlan]} add ${bridge[vlan]}
 		ifconfig ${bridgeif[$vlan]} up
-		let vlan=vlan+1
-	done
-else
-	if [ "$netcfg" ]; then
-		args="$args -net nic,vlan=0 -net tap,vlan=0,fd=3"
-		tunif[0]=$(alloc_if tun)
-		ifconfig ${tunif[0]} link0
-		ifconfig ${tunif[0]} $netcfg
-		ifconfig ${tunif[0]} up
+	else
+		if [ "${netcfg[$vlan]}" ]; then
+			args="$args -net nic,vlan=$vlan -net tap,vlan=$vlan,fd=$((vlan+3))"
+			tunif[$vlan]=$(alloc_if tun)
+			ifconfig ${tunif[$vlan]} link0
+			ifconfig ${tunif[$vlan]} ${netcfg[$vlan]}
+			ifconfig ${tunif[$vlan]} up
+		fi
 	fi
-fi
+	let vlan=vlan+1
+done
 qemu="qemu"
 if [ "$mode" ]; then
 	case "$mode" in
@@ -155,7 +157,7 @@ if [ "$mode" ]; then
 fi
 
 if [ verbose -gt 0 ]; then
-	echo "=> $qemu $args $@"
+	set -x
 fi
 
 rdrargs=""
@@ -180,6 +182,9 @@ else
 		let vlan=vlan+1
 	done
 	eval $qemu $args "$@" $rdrargs
+fi
+if [ verbose -gt 0 ]; then
+	set +x
 fi
 
 vlan=0

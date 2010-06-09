@@ -1,5 +1,65 @@
 #!/bin/sh
 
+# Copyright (c) 2010 Todd T. Fries <todd@fries.net>
+#
+# Permission to use, copy, modify, and distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+alloc_if() {
+	local i=0 type=$1
+	# creation is atomic
+	while ! ifconfig $type$i create > /dev/null 2>&1
+	do
+		let i=i+1
+	done
+	echo $type$i
+}
+
+# sample config:
+
+# # non root user to run as
+# user _mopd
+# 
+# # template hard drive name
+# template template.hd
+# 
+# # host <name> <mem> [<vlan> [<vlan> [..]]]
+# 
+# # Vlans for setting up tun/bridge between qemu sessions
+# #   NOTE: vlan 0 is reserved for access to all systems from the host system
+# #  1 - westint
+# #  2 - westext
+# #  3 - eastext
+# #  4 - eastint
+# 
+# host c-w  32m 1
+# host fw-w 64m 1 2
+# host r    32m 2 3
+# host fw-e 64m 3 4
+# host c-e  32m 4
+# #host c-e1  32m 3
+# #host c-e2  32m 3
+# #host c-e3  32m 3
+# #host c-e4  32m 3
+# #host c-e5  32m 3
+# #host c-e6  32m 3
+#
+# # native <physical interface> <vlan> [<vlan> [<vlan> [..]]]
+# #native em0 0
+# #native em1 1
+# #native em2 2
+
+
+
 loadconf() {
 	local conf="$1"
 	temphd=$(sed -e 's/#.*//' \
@@ -96,26 +156,20 @@ else
 	loadconf cfg
 fi
 
-if ! grep closefrom_override /etc/sudoers > /dev/null 2>&1; then
-	echo "WARNING: Something like: Defaults closefrom_override"
-	echo "WARNING: must be added to /etc/sudoers for useable network"
-	echo "WARNING: interfaces.."
-fi
-
-qemu=/usr/local/bin/qemu
+qrun=/usr/local/sbin/qrun
 baseport=30000
 baseportoff=256 # limits qemu instance count
-basephys=128
-basephysoff=$baseportoff # limits qemu instance + vlan count
 i=0
 set -A dim $(xdpyinfo | awk '/dimensions:/ {sub("x"," ",$2);print $2;}')
-#typeset -i16 x
-echo "default local {"
-echo "               type host; host 127.0.0.1; portbase $baseport; portinc 1;"
-echo "}"
 
-ifconfig trunk128 create > /dev/null 2>&1
-ifconfig trunk128 up
+conserver=0
+#typeset -i16 x
+
+if [ conserver -gt 0 ]; then
+	echo "default local {"
+	echo "               type host; host 127.0.0.1; portbase $baseport; portinc 1;"
+	echo "}"
+fi
 
 openterms() {
 	local host=$1
@@ -156,7 +210,7 @@ do
 		qemu-img create -b $templatehd -f qcow2 ${hn}.hd
 	fi
 
-	openterms $i
+	#openterms $i
 
 	# Do not start qemu if something is already using the hd image
 	l=$(fstat ${hn}.hd | wc -l)
@@ -166,50 +220,36 @@ do
 	fi
 	serport=$((i+baseport))
 	monport=$((i+baseport+baseportoff))
-	echo "console $hn { include local; port $i; }"
-	echo "console ${hn}.mon { include local; port $((i+baseportoff)); }"
+	if [ conserver -gt 0 ]; then
+		echo "console $hn { include local; port $i; }"
+		echo "console ${hn}.mon { include local; port $((i+baseportoff)); }"
+	fi
 	x=$i
 
 	set -A myvlans 0 $(echo ${vlans[$i]} | sed 's/  / /g;s/^ //')
 	vlan=0
 	netargs=""
-	rdrargs=""
 	while [ vlan -lt ${#myvlans[*]} ]
 	do
 		thisvlan=${myvlans[$vlan]}
-		thisfd=$((vlan+3))
-
-		# tun port, unique per qemu instance
-		tportno=$((basephys+basephysoff*i+thisvlan))
-		if ! [ -c /dev/tun$tportno ]; then
-			(
-				cd /dev
-				sh ./MAKEDEV tun$tportno
-			)
+		if ! [ "${vlanif[$thisvlan]}" ]; then
+			vlanif[$thisvlan]=$(alloc_if vether)
 		fi
+		ve=${vlanif[$thisvlan]}
 
-		# bridge port unique per vlan
-		bportno=$((basephys+thisvlan))
-		#echo "Creating tun$tportno bridge$bportno"
-		ifconfig tun$tportno link0
-		ifconfig bridge$bportno create > /dev/null 2>&1
-		brconfig bridge$bportno add tun$tportno up > /dev/null 2>&1
-		netargs="$netargs -net nic,vlan=$vlan,model=rtl8139,macaddr=52:54:01:00:$(printf "%02x" $x):$(printf "%02x" $vlan)"
-		netargs="$netargs -net tap,vlan=$vlan,fd=$thisfd"
-		rdrargs="$rdrargs $thisfd<> /dev/tun$tportno"
+		netargs="$netargs -o bridge=$ve,model=rtl8139,macaddr=52:54:01:00:$(printf "%02x" $x):$(printf "%02x" $vlan)"
 		let vlan=vlan+1
 	done
 
 	chown $user ${hn}.hd $templatehd
-	#echo "rdargs = $rdrargs"
-	sh -c "sudo -C $((thisfd+1)) -u $user $qemu $default \
+	# XXX -daemonize
+	qrun -u $user $default 
 		-nographic \
-		-daemonize \
 		$netargs \
 		-m ${hostmem[$i]} \
-		-hda `pwd`/${hn}.hd \
+		-i `pwd`/${hn}.hd \
 		-serial telnet:127.0.0.1:$serport,server,nowait \
-		-monitor telnet:127.0.0.1:$monport,server,nowait $rdrargs"
+		-monitor telnet:127.0.0.1:$monport,server,nowait > /dev/null 2>&1 &
 	let i=i+1
 done
 
@@ -223,11 +263,9 @@ do
 	do
 		thisvlan=${myvlans[$vlan]}
 
-		# bridge port unique per vlan
-		bportno=$((basephys+thisvlan))
-		ifconfig bridge$bportno create > /dev/null 2>&1
-		brconfig bridge$bportno add $vn up > /dev/null 2>&1
+		bridgeif=$(alloc_if bridge)
+		ifconfig $bridgeif add $vn
+		ifconfig $bridgeif add ${vlanif[$thisvlan]} up
 		let vlan=vlan+1
 	done
 done
-brconfig bridge128 add trunk128

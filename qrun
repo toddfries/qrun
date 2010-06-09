@@ -17,6 +17,7 @@
 imagesize="16G"
 memsize=""
 verbose=0
+tunfd=3  # allocate fd's since -net user will cause them to be off by one
 
 set -A hexdig 0 1 2 3 4 5 6 7 8 9 a b c d e f
 
@@ -44,13 +45,25 @@ vlancount=0
 while [ "$1" ]
 do
 	case "$1" in
-	-b) bridge[$vlancount]="$2"; let vlancount=vlancount+1; shift;;
+	-b)
+		bridge[$vlancount]="$2"
+		fd[$vlancount]="$tunfd"
+		let tunfd=tunfd+1
+		let vlancount=vlancount+1
+		shift
+	;;
 	-C) cd="$2"; shift;;
 	-c) cd="$2";cdboot=1; shift;;
 	-i) image="$2"; shift;;
 	-M) mode="$2"; shift;;
 	-m) memsize="-m $2"; shift;;
-	-n) netcfg[$vlancount]="$2"; let vlancount=vlancount+1; shift;;
+	-n)
+		netcfg[$vlancount]="$2"
+		fd[$vlancount]="$tunfd"
+		let tunfd=tunfd+1
+		let vlancount=vlancount+1
+		shift
+	;;
 	-s) imagesize="$2"; shift;;
 	-o)
 		case "$2" in
@@ -81,6 +94,8 @@ do
 				;;
 				esac
 			done
+			fd[$vlancount]="$tunfd"
+			let tunfd=tunfd+1
 			let vlancount=vlancount+1
 		;;
 		esac
@@ -119,7 +134,6 @@ vlan=0
 while [ vlan -lt vlancount ]
 do
 	if [ "${bridge[$vlan]}" ]; then
-		fd=$((vlan+3))
 		nicargs="nic,vlan=$vlan"
 		if [ "${model[$vlan]}" ]; then
 			nicargs="$nicargs,model=${model[$vlan]}"
@@ -127,7 +141,7 @@ do
 		if [ "${macaddr[$vlan]}" ]; then
 			nicargs="$nicargs,macaddr=${macaddr[$vlan]}"
 		fi
-		args="$args -net $nicargs -net tap,vlan=$vlan,fd=$fd"
+		args="$args -net $nicargs -net tap,vlan=$vlan,fd=${fd[$vlan]}"
 
 		bridgeif[$vlan]=$(alloc_if bridge)
 
@@ -140,7 +154,7 @@ do
 		ifconfig ${bridgeif[$vlan]} up
 	else
 		if [ "${netcfg[$vlan]}" ]; then
-			args="$args -net nic,vlan=$vlan -net tap,vlan=$vlan,fd=$((vlan+3))"
+			args="$args -net nic,vlan=$vlan -net tap,vlan=$vlan,fd=${fd[$vlan]}"
 			tunif[$vlan]=$(alloc_if tun)
 			ifconfig ${tunif[$vlan]} link0
 			ifconfig ${tunif[$vlan]} ${netcfg[$vlan]}

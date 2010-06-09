@@ -14,6 +14,8 @@
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
+args=""
+console="-monitor stdio"
 imagesize="16G"
 memsize=""
 verbose=0
@@ -64,6 +66,13 @@ do
 		let vlancount=vlancount+1
 		shift
 	;;
+	-p)
+		tftpdir="$2"
+		tftpimg="pxeboot"
+		usernet[$vlancount]=1
+		let vlancount=vlancount+1
+		shift
+	;;
 	-s) imagesize="$2"; shift;;
 	-o)
 		case "$2" in
@@ -98,6 +107,23 @@ do
 			let tunfd=tunfd+1
 			let vlancount=vlancount+1
 		;;
+		console*) # console=com0
+			for pairs in $(echo "$2" | sed 's/,/ /g')
+			do
+				rhs=${pairs#*=}
+				lhs=${pairs%=*}
+				case "$lhs" in
+				console)
+					if [ "$rhs" = "com0" ]; then
+						console="-nographic"
+					fi
+				;;
+				*)
+					echo "Oops, $lhs=$rhs unsupported"
+				;;
+				esac
+			done
+		;;
 		esac
 		shift
 	;;
@@ -119,17 +145,15 @@ if ! [ -f "$image" ]; then
 	qemu-img create -f qcow2 $image $imagesize
 fi
 
-args=""
 
 if [ "$cd" -a -f "$cd" ]; then
 	args="$args -cdrom $cd"
 fi
 if [ "$cdboot" ]; then
-	args="$args -boot d"
+	args="$args -boot c"
 fi
 
-args="$args -hda $image -no-fd-bootchk"
-args="$args -monitor stdio"
+args="$args -hda $image -no-fd-bootchk $console"
 vlan=0
 while [ vlan -lt vlancount ]
 do
@@ -152,14 +176,39 @@ do
 		ifconfig ${bridgeif[$vlan]} add ${tunif[$vlan]}
 		ifconfig ${bridgeif[$vlan]} add ${bridge[vlan]}
 		ifconfig ${bridgeif[$vlan]} up
-	else
-		if [ "${netcfg[$vlan]}" ]; then
-			args="$args -net nic,vlan=$vlan -net tap,vlan=$vlan,fd=${fd[$vlan]}"
-			tunif[$vlan]=$(alloc_if tun)
-			ifconfig ${tunif[$vlan]} link0
-			ifconfig ${tunif[$vlan]} ${netcfg[$vlan]}
-			ifconfig ${tunif[$vlan]} up
+	fi
+	if [ "${netcfg[$vlan]}" ]; then
+		nicargs="nic,vlan=$vlan"
+		if [ "${model[$vlan]}" ]; then
+			nicargs="$nicargs,model=${model[$vlan]}"
 		fi
+		if [ "${macaddr[$vlan]}" ]; then
+			nicargs="$nicargs,macaddr=${macaddr[$vlan]}"
+		fi
+		args="$args -net $nicargs -net tap,vlan=$vlan,fd=${fd[$vlan]}"
+		tunif[$vlan]=$(alloc_if tun)
+		ifconfig ${tunif[$vlan]} link0
+		ifconfig ${tunif[$vlan]} ${netcfg[$vlan]}
+		ifconfig ${tunif[$vlan]} up
+	fi
+	if [ "${usernet[$vlan]}" ]; then
+		nicargs="nic,vlan=$vlan"
+		if [ "${model[$vlan]}" ]; then
+			nicargs="$nicargs,model=${model[$vlan]}"
+		fi
+		if [ "${macaddr[$vlan]}" ]; then
+			nicargs="$nicargs,macaddr=${macaddr[$vlan]}"
+		fi
+		userargs="user,vlan=$vlan"
+		if [ "$tftpdir" ]; then
+			userargs="$userargs,tftp=$tftpdir"
+			set -A nicmap n o p
+			args="$args -boot ${nicmap[$vlan]}"
+		fi
+		if [ "$tftpimg" ]; then
+			userargs="$userargs,bootfile=$tftpimg"
+		fi
+		args="$args -net $nicargs -net $userargs"
 	fi
 	let vlan=vlan+1
 done

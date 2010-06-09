@@ -16,35 +16,84 @@
 
 imagesize="16G"
 memsize=""
-debug=0
+verbose=0
 
+set -A hexdig 0 1 2 3 4 5 6 7 8 9 a b c d e f
+
+alloc_if() {
+	local i=0 type=$1
+	# creation is atomic
+	while ! ifconfig $type$i create > /dev/null 2>&1
+	do
+		let i=i+1
+	done
+	case "$type" in
+	tun)
+		if ! [ -c /dev/$type$i ]; then
+		(
+			cd /dev
+			sh ./MAKEDEV $type$i
+		)
+		fi
+	;;
+	esac
+	echo $type$i
+}
+
+vlancount=0
 while [ "$1" ]
 do
 	case "$1" in
-	-b) bridge="$2"; shift;;
+	-b) bridge[$vlancount]="$2"; let vlancount=vlancount+1; shift;;
 	-C) cd="$2"; shift;;
 	-c) cd="$2";cdboot=1; shift;;
-	-d) debug=1;;
 	-i) image="$2"; shift;;
 	-M) mode="$2"; shift;;
 	-m) memsize="-m $2"; shift;;
 	-n) netcfg="$2"; shift;;
 	-s) imagesize="$2"; shift;;
+	-o)
+		case "$2" in
+		bridge*) # bridge=ne0,model=rtl8139,macaddr=52:54:01:00:XX:XX
+			for pairs in $(echo "$2" | sed 's/,/ /g')
+			do
+				rhs=${pairs#*=}
+				lhs=${pairs%=*}
+				case "$lhs" in
+				bridge)
+					bridge[$vlancount]="$2"
+				;;
+				model)
+					model[$vlancount]="$2"
+				;;
+				macaddr)
+					mac="$2"
+					while echo "$mac" | grep "XX" > /dev/null 2>&1
+					do
+						xx=${hexdig[$((RANDOM%16))]}
+						xx=$xx${hexdig[$((RANDOM%16))]}
+						mac=$(echo "$mac" | sed "s/XX/$xx/")
+					done
+					macaddr[$vlancount]="$2"
+				;;
+				*)
+					echo "Oops, $lhs=$rhs unsupported"
+				;;
+				esac
+			done
+			let vlancount=vlancount+1
+		;;
+		esac
+		shift
+	;;
 	-u) user="$2"; shift;;
+	-v) let verbose=verbose+1;;
 	--) shift;break;;
 	*) break;;
 	esac
 	shift
 done
 
-alloc_if() {
-	local i=0 type=$1
-	while ! ifconfig $type$i create > /dev/null 2>&1
-	do
-		let i=i+1
-	done
-	echo $type$i
-}
 
 if ! [ "$image" ]; then
 	echo "No hard drive image specified, use '-img foo.hda' for example"
@@ -55,7 +104,7 @@ if ! [ -f "$image" ]; then
 	qemu-img create -f qcow2 $image $imagesize
 fi
 
-if [ "$netcfg" -a "$bridge" ]; then
+if [ "$netcfg" -a "${bridge[0]}" ]; then
 	echo "Impossible, mixing routing and bridging"
 	exit 1
 fi
@@ -71,25 +120,29 @@ fi
 
 args="$args -hda $image -no-fd-bootchk"
 args="$args -monitor stdio"
-if [ "$bridge" ]; then
-	args="$args -net nic -net tap,fd=3"
+if [ "${bridge[0]}" ]; then
+	for vlan in 0 # $vlans
+	do
+		fd=$((vlan+3))
+		args="$args -net nic,vlan=$vlan -net tap,vlan=$vlan,fd=$fd"
 
-	bridgeif=$(alloc_if bridge)
+		bridgeif=$(alloc_if bridge)
 
-	tunif=$(alloc_if tun)
-	ifconfig $tunif link0
-	ifconfig $tunif up
+		tunif[$vlan]=$(alloc_if tun)
+		ifconfig ${tunif[$vlan]} link0
+		ifconfig ${tunif[$vlan]} up
 
-	ifconfig $bridgeif add $tunif
-	ifconfig $bridgeif add $bridge
-	ifconfig $bridgeif up
+		ifconfig $bridgeif add ${tunif[$vlan]}
+		ifconfig $bridgeif add ${bridge[0]}
+		ifconfig $bridgeif up
+	done
 else
 	if [ "$netcfg" ]; then
-		args="$args -net nic -net tap,fd=3"
-		tunif=$(alloc_if tun)
-		ifconfig $tunif link0
-		ifconfig $tunif $netcfg
-		ifconfig $tunif up
+		args="$args -net nic,vlan=0 -net tap,vlan=0,fd=3"
+		tunif[0]=$(alloc_if tun)
+		ifconfig ${tunif[0]} link0
+		ifconfig ${tunif[0]} $netcfg
+		ifconfig ${tunif[0]} up
 	fi
 fi
 qemu="qemu"
@@ -99,32 +152,32 @@ if [ "$mode" ]; then
 	esac
 fi
 
-if [ debug -gt 0 ]; then
+if [ verbose -gt 0 ]; then
 	echo "=> $qemu $args $@"
 fi
 
 if [ "$user" ]; then
 	chown $user $image
-	if [ "$tunif" ]; then
-		fdpass -u $user -f /dev/$tunif $qemu $args "$@"
+	if [ "${tunif[0]}" ]; then
+		fdpass -u $user -f /dev/${tunif[0]} $qemu $args "$@"
 	else
 		fdpass -u $user $qemu $args "$@"
 	fi
 else
-	if [ "$tunif" ]; then
-		$qemu $args "$@" 3<>/dev/$tunif
+	if [ "${tunif[0]}" ]; then
+		$qemu $args "$@" 3<>/dev/${tunif[0]}
 	else
 		$qemu $args "$@"
 	fi
 fi
 
 if [ "$bridgeif" ]; then
-	ifconfig $bridgeif delete $tunif
+	ifconfig $bridgeif delete ${tunif[0]}
 fi
 
-if [ "$tunif" ]; then
-	ifconfig $tunif down
-	ifconfig $tunif destroy
+if [ "${tunif[0]}" ]; then
+	ifconfig ${tunif[0]} down
+	ifconfig ${tunif[0]} destroy
 fi
 
 if [ "$bridgeif" ]; then

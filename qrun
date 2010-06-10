@@ -208,7 +208,7 @@ if [ "$cd" -a -f "$cd" ]; then
 	args="$args -cdrom $cd"
 fi
 if [ "$cdboot" ]; then
-	args="$args -boot c"
+	args="$args -boot d"
 fi
 
 args="$args -hda $image -no-fd-bootchk $console"

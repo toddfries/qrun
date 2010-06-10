@@ -232,24 +232,22 @@ do
 	while [ vlan -lt ${#myvlans[*]} ]
 	do
 		thisvlan=${myvlans[$vlan]}
-		if ! [ "${vlanif[$thisvlan]}" ]; then
-			vlanif[$thisvlan]=$(alloc_if vether)
-		fi
-		ve=${vlanif[$thisvlan]}
 
-		netargs="$netargs -o bridge=$ve,model=rtl8139,macaddr=52:54:01:00:$(printf "%02x" $x):$(printf "%02x" $vlan)"
+		netargs="$netargs -o bridge=group:vlan${thisvlan}.,model=rtl8139,macaddr=52:54:01:00:$(printf "%02x" $x):$(printf "%02x" $vlan)"
+		echo "$hn: group:vlan${thisvlan}. <-> $thisvlan"
 		let vlan=vlan+1
 	done
 
 	chown $user ${hn}.hd $templatehd
-	# XXX -daemonize
-	qrun -u $user $default 
-		-nographic \
+	qrun -u $user \
 		$netargs \
 		-m ${hostmem[$i]} \
 		-i `pwd`/${hn}.hd \
+		-o console=com0 \
 		-serial telnet:127.0.0.1:$serport,server,nowait \
-		-monitor telnet:127.0.0.1:$monport,server,nowait > /dev/null 2>&1 &
+		-monitor telnet:127.0.0.1:$monport,server,nowait \
+		$default \
+		-daemonize
 	let i=i+1
 done
 

@@ -40,6 +40,11 @@ alloc_if() {
 		fi
 	;;
 	esac
+	if [ "$image" ]; then
+		bni=$(basename $image)
+		echo ifconfig $type$i group ${bni}. > /dev/tty
+		ifconfig $type$i group ${bni}. > /dev/tty 2>&1
+	fi
 	echo $type$i
 }
 
@@ -83,20 +88,36 @@ do
 				lhs=${pairs%=*}
 				case "$lhs" in
 				bridge)
-					bridge[$vlancount]="$2"
+					case "$rhs" in
+					group:*)
+						g="${rhs#group:*}"
+						if=$(ifconfig $g > /dev/null 2>&1|awk \
+						   -F: '/^[a-z]/{print $1}')
+						if ! [ "$if" ]
+						then
+						    if=$(alloc_if bridge)
+						    ifconfig $if group $g
+						fi
+						bridgeif[$vlancount]=$if
+					;;
+					*)
+						bridgeif[$vlancount]=$(alloc_if bridge)
+						bridge[$vlancount]="$rhs"
+					;;
+					esac
 				;;
 				model)
-					model[$vlancount]="$2"
+					model[$vlancount]="$rhs"
 				;;
 				macaddr)
-					mac="$2"
+					mac="$rhs"
 					while echo "$mac" | grep "XX" > /dev/null 2>&1
 					do
 						xx=${hexdig[$((RANDOM%16))]}
 						xx=$xx${hexdig[$((RANDOM%16))]}
 						mac=$(echo "$mac" | sed "s/XX/$xx/")
 					done
-					macaddr[$vlancount]="$2"
+					macaddr[$vlancount]="$mac"
 				;;
 				*)
 					echo "Oops, $lhs=$rhs unsupported"
@@ -107,7 +128,38 @@ do
 			let tunfd=tunfd+1
 			let vlancount=vlancount+1
 		;;
-		console*) # console=com0
+		netcfg*) # netcfg=10.0.7.1/24,model=rtl8139,macaddr=52:54:01:00:XX:XX
+			for pairs in $(echo "$2" | sed 's/,/ /g')
+			do
+				rhs=${pairs#*=}
+				lhs=${pairs%=*}
+				case "$lhs" in
+				netcfg)
+					netcfg[$vlancount]="$rhs"
+				;;
+				model)
+					model[$vlancount]="$rhs"
+				;;
+				macaddr)
+					mac="$rhs"
+					while echo "$mac" | grep "XX" > /dev/null 2>&1
+					do
+						xx=${hexdig[$((RANDOM%16))]}
+						xx=$xx${hexdig[$((RANDOM%16))]}
+						mac=$(echo "$mac" | sed "s/XX/$xx/")
+					done
+					macaddr[$vlancount]="$mac"
+				;;
+				*)
+					echo "Oops, $lhs=$rhs unsupported"
+				;;
+				esac
+			done
+			fd[$vlancount]="$tunfd"
+			let tunfd=tunfd+1
+			let vlancount=vlancount+1
+		;;
+		console*) # console=com0,monitor=stdio,serial=stdio
 			for pairs in $(echo "$2" | sed 's/,/ /g')
 			do
 				rhs=${pairs#*=}
@@ -117,6 +169,12 @@ do
 					if [ "$rhs" = "com0" ]; then
 						console="-nographic"
 					fi
+				;;
+				monitor)
+					console="$console -monitor $rhs"
+				;;
+				serial)
+					console="$console -serial $rhs"
 				;;
 				*)
 					echo "Oops, $lhs=$rhs unsupported"
@@ -157,7 +215,7 @@ args="$args -hda $image -no-fd-bootchk $console"
 vlan=0
 while [ vlan -lt vlancount ]
 do
-	if [ "${bridge[$vlan]}" ]; then
+	if [ "${bridgeif[$vlan]}" ]; then
 		nicargs="nic,vlan=$vlan"
 		if [ "${model[$vlan]}" ]; then
 			nicargs="$nicargs,model=${model[$vlan]}"
@@ -167,14 +225,14 @@ do
 		fi
 		args="$args -net $nicargs -net tap,vlan=$vlan,fd=${fd[$vlan]}"
 
-		bridgeif[$vlan]=$(alloc_if bridge)
-
 		tunif[$vlan]=$(alloc_if tun)
 		ifconfig ${tunif[$vlan]} link0
 		ifconfig ${tunif[$vlan]} up
 
 		ifconfig ${bridgeif[$vlan]} add ${tunif[$vlan]}
-		ifconfig ${bridgeif[$vlan]} add ${bridge[vlan]}
+		if [ "${bridge[$vlan]}" ]; then
+			ifconfig ${bridgeif[$vlan]} add ${bridge[vlan]}
+		fi
 		ifconfig ${bridgeif[$vlan]} up
 	fi
 	if [ "${netcfg[$vlan]}" ]; then
@@ -250,6 +308,7 @@ if [ verbose -gt 0 ]; then
 	set +x
 fi
 
+(
 vlan=0
 while [ vlan -lt vlancount ]
 do
@@ -258,11 +317,21 @@ do
 			ifconfig ${bridgeif[$vlan]}
 			ifconfig ${tunif[$vlan]}
 		}
+		# wait until qemu exits, incase -daemonize is used, to cleanup
+		while [ "$(fstat /dev/${tunif[$vlan]}| grep -v "^USER")" ]
+		do
+			sleep $((RANDOM%60+1))
+		done
 		ifconfig ${bridgeif[$vlan]} del ${tunif[$vlan]}
 		[ verbose -gt 0 ] && ifconfig ${bridgeif[$vlan]}
 	fi
 
 	if [ "${tunif[$vlan]}" ]; then
+		# wait until qemu exits, incase -daemonize is used, to cleanup
+		while [ "$(fstat /dev/${tunif[$vlan]}| grep -v "^USER")" ]
+		do
+			sleep $((RANDOM%60+1))
+		done
 		ifconfig ${tunif[$vlan]} down
 		ifconfig ${tunif[$vlan]} destroy
 	fi
@@ -273,3 +342,4 @@ do
 	fi
 	let vlan=vlan+1
 done
+)&

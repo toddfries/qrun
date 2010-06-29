@@ -186,6 +186,50 @@ prompt and then start
 subsequent times via:
 .Dl $ qrun -i test.hd
 .Pp
+Another common way to use
+.Nm
+would be to bridge the native ethernet to a
+.Xr qemu 1
+guest's network interface:
+.Dl $ sudo qrun -u $USER -i test.hd -b em0
+This sets up a
+.Xr bridge 4
+interface to connect the
+.Xr em 4
+interface of the native system and the
+.Xr tun 4
+interface of the
+.Xr qemu 1
+guest os.
+.Pp
+The third common way to use
+.Nm
+would be to route the
+.Xr qemu 1
+guest's network interface:
+.Dl $ sudo qrun -u $USER -i test.hd -n 10.0.1.1/24
+This would set up a
+.Xr tun 4
+interface with
+.Dq 10.0.1.1 netmask 255.255.255.0
+and it would be up to the user to run
+.Xr dhcpd 8
+on the
+.Xr tun 4
+interface connected to the
+.Xr qemu 1
+guest os.
+.Pp
+One final advanced example that most people will not want to bother with but
+can show the power of qrun:
+.Dl $ sudo qrun -u $USER -i `pwd`/test.hd \
+.Dl   -o bridge=em0,model=rtl8139,macaddr=52:54:01:00:XX:XX \
+.Dl   -o console=com0 \
+.Dl   -- \
+.Dl   -serial telnet:127.0.0.1:30000,server,nowait \
+.Dl   -monitor telnet:127.0.0.1:40000,server,nowait \
+.Dl   -daemonize
+.Pp
 .Sh SEE ALSO
 .Xr qemu 1 ,
 .Xr fdpass 1 ,

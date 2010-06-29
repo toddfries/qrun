@@ -1,0 +1,102 @@
+.\" Copyright (c) 2010 Todd T. Fries <todd@fries.net>
+.\"
+.\" Permission to use, copy, modify, and distribute this software for any
+.\" purpose with or without fee is hereby granted, provided that the above
+.\" copyright notice and this permission notice appear in all copies.
+.\"
+.\" THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+.\" WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+.\" MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+.\" ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+.\" WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+.\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+.\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+.\"
+.Dd $Mdocdate$
+.Dt QNET 1
+.Os
+.Sh NAME
+.Nm qnet
+.Nd wrapper to run qrun via simplistic config, building a network of
+.Xr qemu 1
+instances.
+.Sh SYNOPSIS
+.Nm qnet
+.Ar [config]
+.Sh DESCRIPTION
+.Nm
+by default will use
+.Dq cfg
+for the
+.Ar config
+file.
+.Pp
+By default, bridgeing networking will be used, so running
+.Nm
+as root is required.
+See the
+.Sx EXAMPLES
+section below for a sample config.
+.Pp
+.Sh ENVIRONMENT
+No environment variables are useful at this time.
+.Sh EXAMPLES
+It is best to setup the template hard drive image first via
+.Xr qrun 1
+then let
+.Nm
+create the machine specific images per system in the config file.
+.Nm
+uses the
+.Dq based
+support of qcow2 in
+.Xr qemu 1
+which permits only writing changes to the per machine disk image.
+Below is a sample config for
+.Nm .
+.Pp
+.Dl # sample config:
+.Dl 
+.Dl # non root user to run as
+.Dl user _mopd
+.Dl 
+.Dl # template hard drive name
+.Dl template template.hd
+.Dl 
+.Dl # host <name> <mem> [<vlan> [<vlan> [..]]]
+.Dl 
+.Dl # Vlans for setting up tun/bridge between qemu sessions
+.Dl #   NOTE: vlan 0 is reserved for access to all systems from the host system
+.Dl #  1 - westint
+.Dl #  2 - westext
+.Dl #  3 - eastext
+.Dl #  4 - eastint
+.Dl 
+.Dl host c-w  32m 1
+.Dl host fw-w 64m 1 2
+.Dl host r    32m 2 3
+.Dl host fw-e 64m 3 4
+.Dl host c-e  32m 4
+.Dl #host c-e1  32m 3
+.Dl #host c-e2  32m 3
+.Dl #host c-e3  32m 3
+.Dl #host c-e4  32m 3
+.Dl #host c-e5  32m 3
+.Dl #host c-e6  32m 3
+.Dl
+.Dl # native <physical interface> <vlan> [<vlan> [<vlan> [..]]]
+.Dl #native em0 0
+.Dl #native em1 1
+.Dl #native em2 2
+.Pp
+.Sh SEE ALSO
+.Xr qemu 1 ,
+.Xr qrun 1 ,
+.Xr fdpass 1 ,
+.Xr bridge 4,
+.Xr pf 4,
+.Xr tun 4
+.Sh STANDARDS
+Are there any standards to quote?
+.Sh HISTORY
+This utility is entirely a new creation from Todd T. Fries <todd@fries.net>.

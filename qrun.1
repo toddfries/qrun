@@ -17,14 +17,23 @@
 .Os
 .Sh NAME
 .Nm qrun
-.Nd wrapper to run qemu via simplistic user friendly arguments, building
-knowledge of
-.Xr qemu 1
-into this script instead of unwieldy README documents.
+.Nd qemu wrapper
 .Sh SYNOPSIS
 .Nm qrun
 .Fl i
-.Op Fl bCcMmnopsuv [\fI - [\fIqemu-options\fR]\fR]
+.Op Fl v
+.Op Fl b Ar interface
+.Op Fl C Ar path
+.Op Fl c Ar path
+.Op Fl i Ar path
+.Op Fl M Ar mode
+.Op Fl m Ar memsize
+.Op Fl n Ar string
+.Op Fl o Cm bridge \*(Ba console \*(Ba netcfg
+.Op Fl p Ar path
+.Op Fl s Ar size
+.Op Fl u Ar user
+.Op Ar qemu-options
 .Sh DESCRIPTION
 .Nm
 requires at least the
@@ -46,104 +55,72 @@ and
 .Fl u
 require
 .Nm
-to be executed as root, since they utilize priveleged operations.
+to be executed as root, since they utilize privileged operations.
 .Pp
 The options are as follows:
-.Bl -tag -width A
+.Pp
+.Bl -tag -width Ds -compact
 .It Fl b Ar interface
-If given, the
-.Fl b
-option specifies the bridge interface to bridge to a guest network
-interface.
+Specifies the
+.Xr bridge 4
+interface to bridge to a guest network interface.
 If used multiple times, a new guest network interface will be created
 for each instance, bridged to the network interfaces in the order specified.
+.Pp
 .It Fl C Ar path
-If given, the
-.Fl C
-option specifies the cdrom image or device from which to read blocks of data
-when presenting the guest os with a simulated
+Specifies the CD-ROM image or device from which to read blocks of data
+when presenting the guest OS with a simulated
 .Xr atapiscsi 4
-cdrom device.
+CD-ROM device.
+.Pp
 .It Fl c Ar path
-If given, the
-.Fl c
-option specifies the same as the
+Identical to the
 .Fl C
-option, but additionally boots the guest os from the simulated cdrom device.
+option, but additionally boots the guest OS from the simulated CD-ROM device.
+.Pp
 .It Fl i Ar path
-The
-.Fl i
-option specifies the file or device from which to read blocks of data
-when presenting the guest os with a simulated
+Specifies the file or device from which to read blocks of data
+when presenting the guest OS with a simulated
 .Xr wd 4
 device.
+.Pp
 .It Fl M Ar mode
-If specified, the
-.Fl mode
-can change the machine presented to the guest os.
+Changes the machine presented to the guest OS.
 By default, an i386 machine is presented.
 The only other valid mode is amd64.
-(Lowercase
+.Pp
 .It Fl m Ar memsize
-If specified, the
-.Fl memsize
-argument alters the memory presented to the guest os.
+Alters the memory presented to the guest OS.
 By default,
-.Fl memsize
-is 
-.Dq 128m .
+.Ar memsize
+is 128m.
+.Pp
 .It Fl n Ar string
-If specified, the
-.Fl n
-option is a string passed to
+A string passed to
 .Xr ifconfig 8
 to configure the
 .Xr tun 4
 device.
 This is for routing
 .Xr qemu 1
-sessions natively and/or nating them via
+sessions natively and/or NAT-ing them via
 .Xr pf 4 .
 Like the
 .Fl b
 option, multiple
 .Fl n
 options may be specified, each one coinciding with an interface presented
-to the guest os, in the order specified.
+to the guest OS, in the order specified.
 The
 .Fl n
 and
 .Fl b
 options may be both used if desired.
-.It Fl p Ar path
-If specified, the
-.Fl path
-option specifies the tftpboot dir from which to pxeboot the guest os.
-The guest virtual machines bios will tftp the file
-.Dq pxeboot
-from the
-.Fl path
-specified and start executing it as a real system would.
-.It Fl s Ar size
-If specified, the
-.Fl s
-option specifies the size of the disk image to create, if 
-.Nm
-is auto-creating the disk image.
-.It Fl u Ar user
-If specified,
-.Xr qemu 1
-will be run as user
-.Fl user .
-This is recommended if one of the options requiring root privileges is
-used, as the environment will be setup then the fdpass program will drop
-privileges to the user specified and qemu will not be running as root.
-.It Fl o Ar [\fI bridge=interface,model=nicmodel,macaddr=52:54:01:00:XX:XX \fR]
-.It Fl o Ar [\fI netcfg=string,model=nicmodel,macaddr=52:54:01:00:XX:XX \fR]
-.It Fl o Ar [\fI console=com0,monitor=stdio,serial=stdio \fR]
-The
-.Fl o
-option if specified, presents a more advanced usage of the
+.Pp
+.It Fl o Ar bridge=interface,model=nicmodel,macaddr=52:54:01:00:XX:XX
+.It Fl o Ar netcfg=string,model=nicmodel,macaddr=52:54:01:00:XX:XX
+.It Fl o Ar console=com0,monitor=stdio,serial=stdio
+Provides a more advanced usage of the
 .Fl b
 and
 .Fl n
@@ -151,16 +128,41 @@ options as well as enabling a serial console to be presented at a terminal
 prompt.
 If combined with the
 .Fl p
-option and an etc/boot.conf file containing
-.Dq set tty com0
+option and an
+.Pa /etc/boot.conf
+file containing
+.Dq set tty com0 ,
 a system may be booted to a serial console in a terminal without requiring
 graphics.
 This can be especially useful for running inside
 .Xr tmux 1 .
-.Fl v
-If specified, the
-.Fl v
-option presents verbose information while setting up
+.Pp
+.It Fl p Ar path
+Specifies the tftpboot dir from which to
+.Xr pxeboot 8
+the guest OS.
+The guest virtual machines BIOS will TFTP the file
+.Dq pxeboot
+from the
+.Ar path
+specified and start executing it as a real system would.
+.Pp
+.It Fl s Ar size
+Specifies the size of the disk image to create, if
+.Nm
+is auto-creating the disk image.
+.Pp
+.It Fl u Ar user
+Runs
+.Xr qemu 1
+as user
+.Ar user .
+This is recommended if one of the options requiring root privileges is
+used, as the environment will be set up then the fdpass program will drop
+privileges to the user specified and qemu will not be running as root.
+.Pp
+.It Fl v
+Provides verbose information while setting up
 .Xr bridge 4
 and
 .Xr tun 4
@@ -174,24 +176,29 @@ No environment variables are useful at this time.
 Here are examples on how to use
 .Nm .
 .Pp
-The most basic simple usage would be to install a guest os with user mode
+The most basic simple usage would be to install a guest OS with user mode
 networking:
+.Pp
 .Dl $ qrun -i test.hd -c cd47.iso
+.Pp
 After the installation, one would issue
 .Dq quit
 at the
 .Dq (qemu)
 prompt and then start
 .Xr qemu 1
-subsequent times via:
+subsequently via:
+.Pp
 .Dl $ qrun -i test.hd
 .Pp
 Another common way to use
 .Nm
-would be to bridge the native ethernet to a
+would be to bridge the native Ethernet to a
 .Xr qemu 1
 guest's network interface:
+.Pp
 .Dl $ sudo qrun -u $USER -i test.hd -b em0
+.Pp
 This sets up a
 .Xr bridge 4
 interface to connect the
@@ -200,14 +207,16 @@ interface of the native system and the
 .Xr tun 4
 interface of the
 .Xr qemu 1
-guest os.
+guest OS.
 .Pp
 The third common way to use
 .Nm
 would be to route the
 .Xr qemu 1
 guest's network interface:
+.Pp
 .Dl $ sudo qrun -u $USER -i test.hd -n 10.0.1.1/24
+.Pp
 This would set up a
 .Xr tun 4
 interface with
@@ -218,26 +227,28 @@ on the
 .Xr tun 4
 interface connected to the
 .Xr qemu 1
-guest os.
+guest OS.
 .Pp
 One final advanced example that most people will not want to bother with but
-can show the power of qrun:
-.Dl $ sudo qrun -u $USER -i `pwd`/test.hd \
-.Dl   -o bridge=em0,model=rtl8139,macaddr=52:54:01:00:XX:XX \
-.Dl   -o console=com0 \
-.Dl   -- \
-.Dl   -serial telnet:127.0.0.1:30000,server,nowait \
-.Dl   -monitor telnet:127.0.0.1:40000,server,nowait \
-.Dl   -daemonize
-.Pp
+can show the power of
+.Nm :
+.Bd -literal -offset indent
+$ sudo qrun -u $USER -i `pwd`/test.hd \e
+  -o bridge=em0,model=rtl8139,macaddr=52:54:01:00:XX:XX \e
+  -o console=com0 \e
+  -- \e
+  -serial telnet:127.0.0.1:30000,server,nowait \e
+  -monitor telnet:127.0.0.1:40000,server,nowait \e
+  -daemonize
+.Ed
 .Sh SEE ALSO
-.Xr qemu 1 ,
 .Xr fdpass 1 ,
+.Xr qemu 1 ,
 .Xr bridge 4 ,
 .Xr pf 4 ,
 .Xr tun 4
-.Sh STANDARDS
-Are there any standards to quote?
 .Sh HISTORY
-This utility is entirely a new creation from Todd T. Fries <todd@fries.net>,
-inspired by Bob Beck <beck@openbsd.org>.
+This utility is entirely a new creation from
+.An Todd T. Fries Aq todd@fries.net ,
+inspired by
+.An Bob Beck Aq beck@openbsd.org .

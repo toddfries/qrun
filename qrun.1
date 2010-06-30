@@ -137,6 +137,24 @@ graphics.
 This can be especially useful for running inside
 .Xr tmux 1 .
 .Pp
+The
+.Ar interface
+option to bridge may be a physical interface, such as em0, or a special
+notation:
+.Bd -literal -offset indent
+.Ar group:string
+.Ed
+.Pp
+This special notation permits multiple qrun instances to be bridged together,
+by adding the string to the interface group of the
+.Xr bridge 4
+instead of bridging to a physical interface.
+This mainly for the
+.Xr qnet 1
+script, but advanced users may choose to use it themselves.
+The string is limited by interface group limitations and therefore
+may not end in a number.
+.Pp
 .It Fl p Ar path
 Specifies the tftpboot dir from which to
 .Xr pxeboot 8

@@ -1,5 +1,8 @@
+qrun
+- permit specifying rtable/rdomain per interface
+qnet
+- permit specifying rtable/rdomain per interface
+- use telnet/nc instead of conserver by default
 - save conserver.cf perhaps as $cfg.cf or somesuch, then run conserver with
   the local config
-- integrate fdpass from claudio
 - determine some way to make template updating/creating easier
-- ?optionally use telnet/nc instead of conserver?

@@ -19,7 +19,8 @@ console="-monitor stdio"
 imagesize="16G"
 memsize=""
 verbose=0
-tunfd=3  # allocate fd's since -net user will cause them to be off by one
+tunfd=3     # allocate fd's since -net user will cause them to be off by one
+vlancount=0
 
 set -A hexdig 0 1 2 3 4 5 6 7 8 9 a b c d e f
 
@@ -48,12 +49,12 @@ alloc_if() {
 	echo $type$i
 }
 
-vlancount=0
 while [ "$1" ]
 do
 	case "$1" in
 	-b)
 		bridge[$vlancount]="$2"
+		bridgeif[$vlancount]=$(alloc_if bridge)
 		fd[$vlancount]="$tunfd"
 		let tunfd=tunfd+1
 		let vlancount=vlancount+1

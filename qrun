@@ -207,9 +207,16 @@ fi
 
 if [ "$cd" -a -f "$cd" ]; then
 	args="$args -cdrom $cd"
-fi
-if [ "$cdboot" ]; then
-	args="$args -boot d"
+else
+	if [ "${cd}" != "${cd#ftp://*}" -o "${cd}" != "${cd#http://*}" ]; then
+		cdtmpfile=`mktemp /tmp/.qrun.cd.XXXXXXXXXX`
+		trap 'rm $cdtmpfile' 0 1 15
+		ftp -o $cdtmpfile "$cd" > /dev/null 2>&1 && \
+			args="$args -cdrom $cdtmpfile"
+	fi
+	if [ "$cdboot" ]; then
+		args="$args -boot d"
+	fi
 fi
 
 args="$args -hda $image -no-fd-bootchk $console"

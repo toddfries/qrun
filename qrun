@@ -21,11 +21,17 @@ memsize=""
 verbose=0
 tunfd=3     # allocate fd's since -net user will cause them to be off by one
 vlancount=0
+uid=`id -u`
 
 set -A hexdig 0 1 2 3 4 5 6 7 8 9 a b c d e f
 
 alloc_if() {
 	local i=0 type=$1
+
+	# cannot allocate an interface if !root
+	if [ uid -ne 0 ]; then
+		exit 1
+	fi
 	# creation is atomic
 	while ! ifconfig $type$i create > /dev/null 2>&1
 	do

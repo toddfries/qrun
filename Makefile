@@ -3,7 +3,7 @@
 PROG=		fdpass
 SRCS=		fdpass.c
 SCRIPTS=	qnet qrun
-MAN=		qnet.1 qrun.1
+MAN=		qnet.1 qrun.1 fdpass.1
 
 BINDIR?=	${TRUEPREFIX}/sbin
 

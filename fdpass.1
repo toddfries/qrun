@@ -21,11 +21,10 @@
 .Sh SYNOPSIS
 .Nm fdpass
 .Fl f Ar file
-.Op Fl u Ar user
-.Op Fl r
-.Op Fl w
 .Op Fl n Ar num
-.Op Fl f Ar ...
+.Op Fl r
+.Op Fl u Ar user
+.Op Fl w
 .Cm utility
 .Op Ar argument ...
 .Sh DESCRIPTION
@@ -52,36 +51,37 @@ to run as a user capable of performing the open.
 See the
 .Sx EXAMPLES
 section below for sample usage.
-.Pp
-.Bl -tag -width Ds -compact
+.Bl -tag -width Ds
 .It Fl f Ar file
 Specifies the file to open, and may be specified multiple times.
-.Pp
-.It Op Fl u Ar user
-Specifies the user to become before executing qemu.
-.Pp
-.It Op Fl r
-Opens files readonly.
-.Pp
-.It Op Fl w
-Opens files write only.
-.Pp
 .It Op Fl n Ar num
 File descriptor number to start with.
-.Pp
-.It Fl utility
+.It Op Fl r
+Opens files read only.
+.It Op Fl u Ar user
+Specifies the user to become before executing qemu.
+.It Op Fl w
+Opens files write only.
+.It Cm utility
 Program to execute.
-.Pp
 .It Op Ar argument ...
 Program arguments.
 .El
 .Sh ENVIRONMENT
 No environment variables are useful at this time.
 .Sh EXAMPLES
-Below is a sample use of
-.Nm .
+The below example opens
+.Dq tun0 ,
+drops privileges to user
+.Dq todd ,
+and executes
+.Xr qemu 1
+with command line args instructing it to find the
+.Dq tun0
+file descriptor as file descriptor number 3.
 .Bd -literal -offset indent
-# fdpass -u todd -f /dev/tun0 qemu -hda test.hd -no-fd-bootchk -monitor stdio -net nic,vlan=0 -net tap,vlan=0,fd=3
+# fdpass -u todd -f /dev/tun0 qemu -hda test.hd -no-fd-bootchk \e
+	-monitor stdio -net nic,vlan=0 -net tap,vlan=0,fd=3
 .Ed
 .Sh SEE ALSO
 .Xr qrun 1

@@ -1,0 +1,90 @@
+.\" Copyright (c) 2010 Todd T. Fries <todd@fries.net>
+.\"
+.\" Permission to use, copy, modify, and distribute this software for any
+.\" purpose with or without fee is hereby granted, provided that the above
+.\" copyright notice and this permission notice appear in all copies.
+.\"
+.\" THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+.\" WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+.\" MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+.\" ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+.\" WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+.\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+.\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+.\"
+.Dd $Mdocdate$
+.Dt FDPASS 1
+.Os
+.Sh NAME
+.Nm fdpass
+.Nd file descriptor pass utility
+.Sh SYNOPSIS
+.Nm fdpass
+.Fl f Ar file
+.Op Fl u Ar user
+.Op Fl r
+.Op Fl w
+.Op Fl n Ar num
+.Op Fl f Ar ...
+.Cm utility
+.Op Ar argument ...
+.Sh DESCRIPTION
+.Nm
+opens a
+.Ar file
+and passes it to the file descriptor of a process via
+.Xr execvp 3 .
+.Nm
+requires at least the
+.Fl f Ar file
+argument and a
+.Cm utility
+to be given.
+.Pp
+By default
+.Nm
+will use file descriptor number 3 to start.
+.Nm can be passed multiple files.
+By default, files are opened with both read and write permissions,
+so any files requiring special privleges will need
+.Nm
+to run as a user capable of performing the open.
+See the
+.Sx EXAMPLES
+section below for sample usage.
+.Pp
+.Bl -tag -width Ds -compact
+.It Fl f Ar file
+Specifies the file to open, and may be specified multiple times.
+.Pp
+.It Op Fl u Ar user
+Specifies the user to become before executing qemu.
+.Pp
+.It Op Fl r
+Opens files readonly.
+.Pp
+.It Op Fl w
+Opens files write only.
+.Pp
+.It Op Fl n Ar num
+File descriptor number to start with.
+.Pp
+.It Fl utility
+Program to execute.
+.Pp
+.It Op Ar argument ...
+Program arguments.
+.El
+.Sh ENVIRONMENT
+No environment variables are useful at this time.
+.Sh EXAMPLES
+Below is a sample use of
+.Nm .
+.Bd -literal -offset indent
+# fdpass -u todd -f /dev/tun0 qemu -hda test.hd -no-fd-bootchk -monitor stdio -net nic,vlan=0 -net tap,vlan=0,fd=3
+.Ed
+.Sh SEE ALSO
+.Xr qrun 1
+.Sh HISTORY
+This utility was created by
+.An Claudio Jeker Aq claudio@openbsd.org .

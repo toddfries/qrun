@@ -49,18 +49,42 @@ alloc_if() {
 	esac
 	if [ "$image" ]; then
 		bni=$(basename $image)
-		echo ifconfig $type$i group ${bni}. > /dev/tty
+		if [ verbose -gt 0 ]; then
+			echo ifconfig $type$i group ${bni}. > /dev/tty
+		fi
 		ifconfig $type$i group ${bni}. > /dev/tty 2>&1
 	fi
 	echo $type$i
+}
+alloc_bridge() {
+	set -x
+	local name="$1"
+	case "$name" in
+	group:*)
+		g="${rhs#group:*}"
+		# first bridge interface, incase something is wrong and we
+		# have multiple interfaces matching the group name
+		if=$(ifconfig $g 2>&1|awk \
+		   -F: '/^[a-z]/{print $1}'|head -1)
+		if ! [ "$if" ]
+		then
+		    if=$(alloc_if bridge)
+		    ifconfig $if group $g
+		fi
+		bridgeif[$vlancount]=$if
+	;;
+	*)
+		bridgeif[$vlancount]=$(alloc_if bridge)
+		bridge[$vlancount]="$rhs"
+	;;
+	esac
 }
 
 while [ "$1" ]
 do
 	case "$1" in
 	-b)
-		bridge[$vlancount]="$2"
-		bridgeif[$vlancount]=$(alloc_if bridge)
+		alloc_bridge "$2"
 		fd[$vlancount]="$tunfd"
 		let tunfd=tunfd+1
 		let vlancount=vlancount+1
@@ -80,7 +104,7 @@ do
 	;;
 	-p)
 		tftpdir="$2"
-		tftpimg="pxeboot"
+		tftpimg="/pxeboot"
 		usernet[$vlancount]=1
 		let vlancount=vlancount+1
 		shift
@@ -95,23 +119,7 @@ do
 				lhs=${pairs%=*}
 				case "$lhs" in
 				bridge)
-					case "$rhs" in
-					group:*)
-						g="${rhs#group:*}"
-						if=$(ifconfig $g > /dev/null 2>&1|awk \
-						   -F: '/^[a-z]/{print $1}')
-						if ! [ "$if" ]
-						then
-						    if=$(alloc_if bridge)
-						    ifconfig $if group $g
-						fi
-						bridgeif[$vlancount]=$if
-					;;
-					*)
-						bridgeif[$vlancount]=$(alloc_if bridge)
-						bridge[$vlancount]="$rhs"
-					;;
-					esac
+					alloc_bridge $rhs
 				;;
 				model)
 					model[$vlancount]="$rhs"
@@ -206,7 +214,7 @@ if ! [ "$image" ]; then
 	exit 1
 fi
 
-if ! [ -f "$image" ]; then
+if ! [ -e "$image" ]; then
 	qemu-img create -f qcow2 $image $imagesize
 fi
 
@@ -225,7 +233,9 @@ else
 	fi
 fi
 
-args="$args -hda $image -no-fd-bootchk $console"
+# XXX tablet only if graphics
+args="$args -hda $image -usb -usbdevice tablet -no-fd-bootchk $console"
+# 0.12.x only -watchdog i6300esb
 vlan=0
 while [ vlan -lt vlancount ]
 do
@@ -276,6 +286,8 @@ do
 			userargs="$userargs,tftp=$tftpdir"
 			set -A nicmap n o p
 			args="$args -boot ${nicmap[$vlan]}"
+			args="$args -tftp $tftpdir"
+			args="$args -bootp $tftpimg"
 		fi
 		if [ "$tftpimg" ]; then
 			userargs="$userargs,bootfile=$tftpimg"
@@ -332,7 +344,7 @@ do
 			ifconfig ${tunif[$vlan]}
 		}
 		# wait until qemu exits, incase -daemonize is used, to cleanup
-		while [ "$(fstat /dev/${tunif[$vlan]}| grep -v "^USER")" ]
+		while [ "$(/sbin/ifconfig ${tunif[$vlan]}|grep "status: active")" ]
 		do
 			sleep $((RANDOM%60+1))
 		done
@@ -351,8 +363,12 @@ do
 	fi
 
 	if [ "${bridgeif[$vlan]}" ]; then
-		ifconfig ${bridgeif[$vlan]} down
-		ifconfig ${bridgeif[$vlan]} destroy
+		# do not destroy a bridge unless there are no more members
+		if ! [ "$(ifconfig ${bridgeif[$vlan]}| grep "port [1-9]")" ]
+		then
+			ifconfig ${bridgeif[$vlan]} down
+			ifconfig ${bridgeif[$vlan]} destroy
+		fi
 	fi
 	let vlan=vlan+1
 done

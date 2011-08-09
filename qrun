@@ -17,6 +17,8 @@
 args=""
 console="-monitor stdio"
 imagesize="16G"
+image=""
+diskcount=0
 memsize=""
 verbose=0
 tunfd=3     # allocate fd's since -net user will cause them to be off by one
@@ -50,9 +52,9 @@ alloc_if() {
 	if [ "$image" ]; then
 		bni=$(basename $image)
 		if [ verbose -gt 0 ]; then
-			echo ifconfig $type$i group ${bni}. > /dev/tty
+			echo ifconfig $type$i group ${bni}.
 		fi
-		ifconfig $type$i group ${bni}. > /dev/tty 2>&1
+		ifconfig $type$i group ${bni}.
 	fi
 	echo $type$i
 }
@@ -90,7 +92,20 @@ do
 	;;
 	-C) cd="$2"; shift;;
 	-c) cd="$2";cdboot=1; shift;;
-	-i) image="$2"; shift;;
+	-i)
+		if ! [ "$image" ]; then
+			image="$2"
+		fi
+		# 32 is scsibus
+		# 4 is observed
+		if [ "$((diskcount%4))" -eq 0 ]; then
+			args="$args -device ahci,id=ahci$((diskcount/4))"
+		fi
+		args="$args -drive id=disk$diskcount,file=$2,if=none -device ide-drive,drive=disk$diskcount,bus=ahci$((diskcount/4)).$((diskcount%4))"
+		images="$images $2"
+		let diskcount=diskcount+1
+		shift
+	;;
 	-M) mode="$2"; shift;;
 	-m) memsize="-m $2"; shift;;
 	-n)
@@ -208,14 +223,16 @@ done
 
 
 if ! [ "$image" ]; then
-	echo "No hard drive image specified, use '-img foo.hda' for example"
+	echo "No hard drive image specified, use '-i foo.hda' for example"
 	exit 1
 fi
 
-if ! [ -e "$image" ]; then
-	qemu-img create -f qcow2 $image $imagesize
-fi
-
+for img in $images
+do
+	if ! [ -e "$img" ]; then
+		qemu-img create -f qcow2 $img $imagesize
+	fi
+done
 
 if [ "$cd" -a -f "$cd" ]; then
 	args="$args -cdrom $cd"
@@ -227,13 +244,17 @@ else
 			args="$args -cdrom $cdtmpfile"
 	fi
 	if [ "$cdboot" ]; then
-		args="$args -boot d"
+		args="$args -boot once=d,order=c"
 	fi
 fi
 
-# XXX tablet only if graphics
-args="$args -hda $image -usb -usbdevice tablet -no-fd-bootchk $console"
-# 0.12.x only -watchdog i6300esb
+args="$args -usb -no-fd-bootchk $console"
+args="$args -usbdevice tablet" # XXX tablet only if graphics?
+#args="$args -watchdog i6300esb"
+args="$args -watchdog ib700"
+if [ "X$memsize" != "X" ]; then
+	args="$args $memsize"
+fi
 vlan=0
 while [ vlan -lt vlancount ]
 do
@@ -283,7 +304,7 @@ do
 		if [ "$tftpdir" ]; then
 			userargs="$userargs,tftp=$tftpdir"
 			set -A nicmap n o p
-			args="$args -boot ${nicmap[$vlan]}"
+			args="$args -boot once=n,order=c"
 			args="$args -tftp $tftpdir"
 			args="$args -bootp $tftpimg"
 		fi
@@ -307,7 +328,7 @@ fi
 
 rdrargs=""
 if [ "$user" ]; then
-	chown $user $image
+	chown $user $images
 	vlan=0
 	while [ vlan -lt vlancount ]
 	do

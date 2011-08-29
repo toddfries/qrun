@@ -52,7 +52,7 @@ alloc_if() {
 	if [ "$image" ]; then
 		bni=$(basename $image)
 		if [ verbose -gt 0 ]; then
-			echo ifconfig $type$i group ${bni}.
+			echo ifconfig $type$i group ${bni}. > /dev/stderr
 		fi
 		ifconfig $type$i group ${bni}.
 	fi
@@ -93,20 +93,30 @@ do
 	-C) cd="$2"; shift;;
 	-c) cd="$2";cdboot=1; shift;;
 	-i)
+		# ahci is not bootable, so 1st must be ide
 		if ! [ "$image" ]; then
+			args="$args -hda $2"
 			image="$2"
+			images="$images $2"
+		else
+			# 32 is scsibus
+			# 4 is observed
+			if [ "$((diskcount%4))" -eq 0 ]; then
+				args="$args -device ahci,id=ahci$((diskcount/4))"
+			fi
+			args="$args -drive id=disk$diskcount,file=$2,if=none"
+			args="$args -device ide-drive,drive=disk$diskcount,"
+			args="${args}bus=ahci$((diskcount/4)).$((diskcount%4))"
+			images="$images $2"
+			let diskcount=diskcount+1
 		fi
-		# 32 is scsibus
-		# 4 is observed
-		if [ "$((diskcount%4))" -eq 0 ]; then
-			args="$args -device ahci,id=ahci$((diskcount/4))"
-		fi
-		args="$args -drive id=disk$diskcount,file=$2,if=none -device ide-drive,drive=disk$diskcount,bus=ahci$((diskcount/4)).$((diskcount%4))"
-		images="$images $2"
-		let diskcount=diskcount+1
 		shift
 	;;
-	-M) mode="$2"; shift;;
+	-M)
+		mode=$(echo $2|sed 's/:.*$//')
+		machine=$(echo $2|sed -n '/:/{s/^.*://;p;}')
+		shift
+	;;
 	-m) memsize="-m $2"; shift;;
 	-n)
 		netcfg[$vlancount]="$2"
@@ -248,10 +258,8 @@ else
 	fi
 fi
 
-args="$args -usb -no-fd-bootchk $console"
-args="$args -usbdevice tablet" # XXX tablet only if graphics?
 #args="$args -watchdog i6300esb"
-args="$args -watchdog ib700"
+#args="$args -watchdog ib700"
 if [ "X$memsize" != "X" ]; then
 	args="$args $memsize"
 fi
@@ -315,11 +323,17 @@ do
 	fi
 	let vlan=vlan+1
 done
+
+usbadd="-usb -usbdevice tablet"
 qemu="qemu"
-if [ "$mode" ]; then
-	case "$mode" in
-	amd64) qemu="qemu-system-x86_64";;
-	esac
+case "$mode" in
+sparc) qemu="qemu-system-sparc";;
+amd64) qemu="qemu-system-x86_64"; args="$args $usbadd -no-fd-bootchk";;
+*)     qemu="qemu";               args="$args $usbadd -no-fd-bootchk";;
+esac
+args="$args $console"
+if [ "$machine" ]; then
+	args="$args -M $machine"
 fi
 
 if [ verbose -gt 0 ]; then
@@ -359,8 +373,8 @@ while [ vlan -lt vlancount ]
 do
 	if [ "${bridgeif[$vlan]}" ]; then
 		[ verbose -gt 0 ] && {
-			ifconfig ${bridgeif[$vlan]}
-			ifconfig ${tunif[$vlan]}
+			ifconfig ${bridgeif[$vlan]} > /dev/stderr
+			ifconfig ${tunif[$vlan]} > /dev/stderr
 		}
 		# wait until qemu exits, incase -daemonize is used, to cleanup
 		while [ "$(/sbin/ifconfig ${tunif[$vlan]}|grep "status: active")" ]
@@ -368,7 +382,7 @@ do
 			sleep $((RANDOM%60+1))
 		done
 		ifconfig ${bridgeif[$vlan]} del ${tunif[$vlan]}
-		[ verbose -gt 0 ] && ifconfig ${bridgeif[$vlan]}
+		[ verbose -gt 0 ] && ifconfig ${bridgeif[$vlan]} > /dev/stderr
 	fi
 
 	if [ "${tunif[$vlan]}" ]; then

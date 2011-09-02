@@ -24,6 +24,7 @@ verbose=0
 tunfd=3     # allocate fd's since -net user will cause them to be off by one
 vlancount=0
 uid=`id -u`
+mode=i386
 
 set -A hexdig 0 1 2 3 4 5 6 7 8 9 a b c d e f
 
@@ -49,7 +50,7 @@ alloc_if() {
 		fi
 	;;
 	esac
-	if [ "$image" ]; then
+	if [ "X$image" != "X" ]; then
 		bni=$(basename $image)
 		if [ verbose -gt 0 ]; then
 			echo ifconfig $type$i group ${bni}. > /dev/stderr
@@ -80,6 +81,43 @@ alloc_bridge() {
 	esac
 }
 
+controller=""
+controllercount=0
+maxdisks=1
+firstdisk=1
+controllertype=ahci
+alloc_disk_controller()
+{
+	local type=$1
+
+	controller="dc$controllercount"
+	let controllercount=controllercount+1
+	args="$args -device $type,id=$controller"
+	case $type in
+	ahci|isa-ide) maxdisks=4 dname=ide-drive;;
+	lsi53c895a) maxdisks=7 dname=scsi-disk;;
+	esac
+}
+alloc_disk() {
+	local file="$1"
+	if [ $((diskcount%${maxdisks})) -eq 0 ]; then
+		alloc_disk_controller $controllertype
+	fi
+
+	args="$args -drive id=d$diskcount,file=$file,if=none"
+	args="$args -device $dname,drive=d$diskcount,"
+	case $controllertype in
+	ahci|isa-ide)
+		args="${args}bus=${controller}.$((diskcount%${maxdisks}))"
+	;;
+	lsi53c895a)
+		args="${args}bus=${controller}.0,"
+		args="${args}scsi-id=$((diskcount%${maxdisks}))"
+	;;
+	esac
+	let diskcount=diskcount+1
+}
+
 while [ "$1" ]
 do
 	case "$1" in
@@ -93,23 +131,8 @@ do
 	-C) cd="$2"; shift;;
 	-c) cd="$2";cdboot=1; shift;;
 	-i)
-		# ahci is not bootable, so 1st must be ide
-		if ! [ "$image" ]; then
-			args="$args -hda $2"
-			image="$2"
-			images="$images $2"
-		else
-			# 32 is scsibus
-			# 4 is observed
-			if [ "$((diskcount%4))" -eq 0 ]; then
-				args="$args -device ahci,id=ahci$((diskcount/4))"
-			fi
-			args="$args -drive id=disk$diskcount,file=$2,if=none"
-			args="$args -device ide-drive,drive=disk$diskcount,"
-			args="${args}bus=ahci$((diskcount/4)).$((diskcount%4))"
-			images="$images $2"
-			let diskcount=diskcount+1
-		fi
+		[ "$image" ] || image="$2"
+		images="$images $2"
 		shift
 	;;
 	-M)
@@ -220,6 +243,27 @@ do
 				esac
 			done
 		;;
+		controllertype*) # controllertype=ahci
+			for pairs in $(echo "$2" | sed 's/,/ /g')
+			do
+				rhs=${pairs#*=}
+				lhs=${pairs%=*}
+				case "$lhs" in
+				controllertype)
+					case "$rhs" in
+					isa-ide|ahci|lsi53c895a);;
+					*) echo "Oops, $lhs=$rhs unsupported"
+					   exit 1
+					;;
+					esac
+					controllertype="$rhs"
+				;;
+				*) echo "Oops, $lhs=$rhs unsupported"
+					   exit 1
+				;;
+				esac
+			done
+		;;
 		esac
 		shift
 	;;
@@ -232,15 +276,52 @@ do
 done
 
 
-if ! [ "$image" ]; then
-	echo "No hard drive image specified, use '-i foo.hda' for example"
-	exit 1
+if ! [ "$images" ]; then
+	echo "WARNING: No drive image specified, use '-i foo.hda' for example"
 fi
+
+usbadd="-usb -usbdevice tablet"
+qemu="qemu"
+case "$mode" in
+arm)
+	qemu="qemu-system-arm"
+	args="$args $usbadd"
+	ahciboot=1
+;;
+sparc)
+	qemu="qemu-system-sparc"
+	ahciboot=0
+;;
+amd64)
+	qemu="qemu-system-x86_64"
+	args="$args $usbadd -no-fd-bootchk"
+	ahciboot=0
+;;
+i386)
+	qemu="qemu"
+	args="$args $usbadd -no-fd-bootchk"
+	ahciboot=0
+;;
+*)
+	echo "unlimited mode, $mode"
+	exit 1
+;;
+esac
+
 
 for img in $images
 do
 	if ! [ -e "$img" ]; then
 		qemu-img create -f qcow2 $img $imagesize
+	fi
+	# ahci is not bootable on x86, so 1st must be ide
+	if [ firstdisk -eq 1 -a ahciboot -eq 0 ]; then
+		args="$args -drive file=$img,index=0,media=disk"
+		let firstdisk=firstdisk+1
+	else
+		# 32 is scsibus
+		# 4 is observed
+		alloc_disk "$img"
 	fi
 done
 
@@ -324,13 +405,6 @@ do
 	let vlan=vlan+1
 done
 
-usbadd="-usb -usbdevice tablet"
-qemu="qemu"
-case "$mode" in
-sparc) qemu="qemu-system-sparc";;
-amd64) qemu="qemu-system-x86_64"; args="$args $usbadd -no-fd-bootchk";;
-*)     qemu="qemu";               args="$args $usbadd -no-fd-bootchk";;
-esac
 args="$args $console"
 if [ "$machine" ]; then
 	args="$args -M $machine"

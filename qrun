@@ -312,7 +312,11 @@ esac
 for img in $images
 do
 	if ! [ -e "$img" ]; then
-		qemu-img create -f qcow2 $img $imagesize
+		xtra=""
+		if [ "${imagesize%T}" != "${imagesize}" ]; then
+			xtra="-o cluster_size=2M"
+		fi
+		qemu-img create -f qcow2 $xtra $img $imagesize
 	fi
 	# ahci is not bootable on x86, so 1st must be ide
 	if [ firstdisk -eq 1 -a ahciboot -eq 0 ]; then

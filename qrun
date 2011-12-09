@@ -17,11 +17,14 @@
 args=""
 console="-monitor stdio"
 imagesize="16G"
+image=""
+diskcount=0
 memsize=""
 verbose=0
 tunfd=3     # allocate fd's since -net user will cause them to be off by one
 vlancount=0
 uid=`id -u`
+mode=i386
 
 set -A hexdig 0 1 2 3 4 5 6 7 8 9 a b c d e f
 
@@ -47,20 +50,79 @@ alloc_if() {
 		fi
 	;;
 	esac
-	if [ "$image" ]; then
+	if [ "X$image" != "X" ]; then
 		bni=$(basename $image)
-		echo ifconfig $type$i group ${bni}. > /dev/tty
-		ifconfig $type$i group ${bni}. > /dev/tty 2>&1
+		if [ verbose -gt 0 ]; then
+			echo ifconfig $type$i group ${bni}. > /dev/stderr
+		fi
+		ifconfig $type$i group ${bni}.
 	fi
 	echo $type$i
+}
+alloc_bridge() {
+	local name="$1"
+	case "$name" in
+	group:*)
+		g="${name#group:*}"
+		# first bridge interface, incase something is wrong and we
+		# have multiple interfaces matching the group name
+		if=$(ifconfig $g 2>&1|awk \
+		   -F: '/^[a-z]/{print $1}'|head -1)
+		if ! [ "$if" ]; then
+			if=$(alloc_if bridge)
+			ifconfig $if group $g
+		fi
+		bridgeif[$vlancount]=$if
+	;;
+	*)
+		bridgeif[$vlancount]=$(alloc_if bridge)
+		bridge[$vlancount]="$name"
+	;;
+	esac
+}
+
+controller=""
+controllercount=0
+maxdisks=1
+firstdisk=1
+controllertype=ahci
+alloc_disk_controller()
+{
+	local type=$1
+
+	controller="dc$controllercount"
+	let controllercount=controllercount+1
+	args="$args -device $type,id=$controller"
+	case $type in
+	ahci|isa-ide) maxdisks=4 dname=ide-drive;;
+	lsi53c895a) maxdisks=7 dname=scsi-disk;;
+	esac
+}
+alloc_disk() {
+	local file="$1"
+	if [ $((diskcount%${maxdisks})) -eq 0 ]; then
+		alloc_disk_controller $controllertype
+	fi
+
+	args="$args -drive id=d$diskcount,file=$file,if=none"
+	args="$args -device $dname,drive=d$diskcount,"
+	case $controllertype in
+	ahci|isa-ide)
+		args="${args}bus=${controller}.$((diskcount%${maxdisks}))"
+	;;
+	lsi53c895a)
+		args="${args}bus=${controller}.0,"
+		args="${args}scsi-id=$((diskcount%${maxdisks}))"
+	;;
+	esac
+	let diskcount=diskcount+1
 }
 
 while [ "$1" ]
 do
 	case "$1" in
 	-b)
-		bridge[$vlancount]="$2"
-		bridgeif[$vlancount]=$(alloc_if bridge)
+		alloc_bridge "$2"
 		fd[$vlancount]="$tunfd"
 		let tunfd=tunfd+1
 		let vlancount=vlancount+1
@@ -68,8 +130,16 @@ do
 	;;
 	-C) cd="$2"; shift;;
 	-c) cd="$2";cdboot=1; shift;;
-	-i) image="$2"; shift;;
-	-M) mode="$2"; shift;;
+	-i)
+		[ "$image" ] || image="$2"
+		images="$images $2"
+		shift
+	;;
+	-M)
+		mode=$(echo $2|sed 's/:.*$//')
+		machine=$(echo $2|sed -n '/:/{s/^.*://;p;}')
+		shift
+	;;
 	-m) memsize="-m $2"; shift;;
 	-n)
 		netcfg[$vlancount]="$2"
@@ -95,23 +165,7 @@ do
 				lhs=${pairs%=*}
 				case "$lhs" in
 				bridge)
-					case "$rhs" in
-					group:*)
-						g="${rhs#group:*}"
-						if=$(ifconfig $g > /dev/null 2>&1|awk \
-						   -F: '/^[a-z]/{print $1}')
-						if ! [ "$if" ]
-						then
-						    if=$(alloc_if bridge)
-						    ifconfig $if group $g
-						fi
-						bridgeif[$vlancount]=$if
-					;;
-					*)
-						bridgeif[$vlancount]=$(alloc_if bridge)
-						bridge[$vlancount]="$rhs"
-					;;
-					esac
+					alloc_bridge $rhs
 				;;
 				model)
 					model[$vlancount]="$rhs"
@@ -189,6 +243,27 @@ do
 				esac
 			done
 		;;
+		controllertype*) # controllertype=ahci
+			for pairs in $(echo "$2" | sed 's/,/ /g')
+			do
+				rhs=${pairs#*=}
+				lhs=${pairs%=*}
+				case "$lhs" in
+				controllertype)
+					case "$rhs" in
+					isa-ide|ahci|lsi53c895a);;
+					*) echo "Oops, $lhs=$rhs unsupported"
+					   exit 1
+					;;
+					esac
+					controllertype="$rhs"
+				;;
+				*) echo "Oops, $lhs=$rhs unsupported"
+					   exit 1
+				;;
+				esac
+			done
+		;;
 		esac
 		shift
 	;;
@@ -201,15 +276,57 @@ do
 done
 
 
-if ! [ "$image" ]; then
-	echo "No hard drive image specified, use '-img foo.hda' for example"
+if ! [ "$images" ]; then
+	echo "WARNING: No drive image specified, use '-i foo.hda' for example"
+fi
+
+usbadd="-usb -usbdevice tablet"
+qemu="qemu"
+case "$mode" in
+arm)
+	qemu="qemu-system-arm"
+	args="$args $usbadd"
+	ahciboot=1
+;;
+sparc)
+	qemu="qemu-system-sparc"
+	ahciboot=0
+;;
+amd64)
+	qemu="qemu-system-x86_64"
+	args="$args $usbadd -no-fd-bootchk"
+	ahciboot=0
+;;
+i386)
+	qemu="qemu"
+	args="$args $usbadd -no-fd-bootchk"
+	ahciboot=0
+;;
+*)
+	echo "unlimited mode, $mode"
 	exit 1
-fi
+;;
+esac
 
-if ! [ -e "$image" ]; then
-	qemu-img create -f qcow2 $image $imagesize
-fi
-
+for img in $images
+do
+	if ! [ -e "$img" ]; then
+		xtra=""
+		if [ "${imagesize%T}" != "${imagesize}" ]; then
+			xtra="-o cluster_size=2M"
+		fi
+		qemu-img create -f qcow2 $xtra $img $imagesize
+	fi
+	# ahci is not bootable on x86, so 1st must be ide
+	if [ firstdisk -eq 1 -a ahciboot -eq 0 ]; then
+		args="$args -drive file=$img,index=0,media=disk"
+		let firstdisk=firstdisk+1
+	else
+		# 32 is scsibus
+		# 4 is observed
+		alloc_disk "$img"
+	fi
+done
 
 if [ "$cd" -a -f "$cd" ]; then
 	args="$args -cdrom $cd"
@@ -221,13 +338,15 @@ else
 			args="$args -cdrom $cdtmpfile"
 	fi
 	if [ "$cdboot" ]; then
-		args="$args -boot d"
+		args="$args -boot once=d,order=c"
 	fi
 fi
 
-# XXX tablet only if graphics
-args="$args -hda $image -usb -usbdevice tablet -no-fd-bootchk $console"
-# 0.12.x only -watchdog i6300esb
+#args="$args -watchdog i6300esb"
+#args="$args -watchdog ib700"
+if [ "X$memsize" != "X" ]; then
+	args="$args $memsize"
+fi
 vlan=0
 while [ vlan -lt vlancount ]
 do
@@ -276,8 +395,9 @@ do
 		userargs="user,vlan=$vlan"
 		if [ "$tftpdir" ]; then
 			userargs="$userargs,tftp=$tftpdir"
-			set -A nicmap n o p
-			args="$args -boot ${nicmap[$vlan]}"
+			#set -A nicmap n o p
+			#args="$args -boot ${nicmap[$vlan]}"
+			args="$args -boot once=n,order=c"
 			args="$args -tftp $tftpdir"
 			args="$args -bootp $tftpimg"
 		fi
@@ -288,11 +408,10 @@ do
 	fi
 	let vlan=vlan+1
 done
-qemu="qemu"
-if [ "$mode" ]; then
-	case "$mode" in
-	amd64) qemu="qemu-system-x86_64";;
-	esac
+
+args="$args $console"
+if [ "$machine" ]; then
+	args="$args -M $machine"
 fi
 
 if [ verbose -gt 0 ]; then
@@ -301,7 +420,7 @@ fi
 
 rdrargs=""
 if [ "$user" ]; then
-	chown $user $image
+	chown $user $images
 	vlan=0
 	while [ vlan -lt vlancount ]
 	do
@@ -332,8 +451,8 @@ while [ vlan -lt vlancount ]
 do
 	if [ "${bridgeif[$vlan]}" ]; then
 		[ verbose -gt 0 ] && {
-			ifconfig ${bridgeif[$vlan]}
-			ifconfig ${tunif[$vlan]}
+			ifconfig ${bridgeif[$vlan]} > /dev/stderr
+			ifconfig ${tunif[$vlan]} > /dev/stderr
 		}
 		# wait until qemu exits, incase -daemonize is used, to cleanup
 		while [ "$(/sbin/ifconfig ${tunif[$vlan]}|grep "status: active")" ]
@@ -341,7 +460,7 @@ do
 			sleep $((RANDOM%60+1))
 		done
 		ifconfig ${bridgeif[$vlan]} del ${tunif[$vlan]}
-		[ verbose -gt 0 ] && ifconfig ${bridgeif[$vlan]}
+		[ verbose -gt 0 ] && ifconfig ${bridgeif[$vlan]} > /dev/stderr
 	fi
 
 	if [ "${tunif[$vlan]}" ]; then
@@ -355,8 +474,12 @@ do
 	fi
 
 	if [ "${bridgeif[$vlan]}" ]; then
-		ifconfig ${bridgeif[$vlan]} down
-		ifconfig ${bridgeif[$vlan]} destroy
+		# do not destroy a bridge unless there are no more members
+		if ! [ "$(ifconfig ${bridgeif[$vlan]}| grep "port [1-9]")" ]
+		then
+			ifconfig ${bridgeif[$vlan]} down
+			ifconfig ${bridgeif[$vlan]} destroy
+		fi
 	fi
 	let vlan=vlan+1
 done

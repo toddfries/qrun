@@ -298,7 +298,7 @@ amd64)
 	ahciboot=0
 ;;
 i386)
-	qemu="qemu"
+	qemu="qemu-system-i386"
 	args="$args $usbadd -no-fd-bootchk"
 	ahciboot=0
 ;;

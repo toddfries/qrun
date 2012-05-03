@@ -298,7 +298,7 @@ amd64)
 	ahciboot=0
 ;;
 i386)
-	qemu="qemu"
+	qemu="qemu-system-i386"
 	args="$args $usbadd -no-fd-bootchk"
 	ahciboot=0
 ;;
@@ -307,7 +307,6 @@ i386)
 	exit 1
 ;;
 esac
-
 
 for img in $images
 do
@@ -396,7 +395,8 @@ do
 		userargs="user,vlan=$vlan"
 		if [ "$tftpdir" ]; then
 			userargs="$userargs,tftp=$tftpdir"
-			set -A nicmap n o p
+			#set -A nicmap n o p
+			#args="$args -boot ${nicmap[$vlan]}"
 			args="$args -boot once=n,order=c"
 			args="$args -tftp $tftpdir"
 			args="$args -bootp $tftpimg"

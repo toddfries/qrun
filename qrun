@@ -286,7 +286,7 @@ case "$mode" in
 arm)
 	qemu="qemu-system-arm"
 	args="$args $usbadd"
-	ahciboot=1
+	ahciboot=0
 ;;
 sparc)
 	qemu="qemu-system-sparc"

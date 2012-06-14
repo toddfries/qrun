@@ -32,9 +32,8 @@ alloc_if() {
 	local i=0 type=$1
 
 	# cannot allocate an interface if !root
-	if [ uid -ne 0 ]; then
-		exit 1
-	fi
+	(( uid != 0 )) && exit 1
+
 	# creation is atomic
 	while ! ifconfig $type$i create > /dev/null 2>&1
 	do
@@ -52,7 +51,7 @@ alloc_if() {
 	esac
 	if [ "X$image" != "X" ]; then
 		bni=$(basename $image)
-		if [ verbose -gt 0 ]; then
+		if (( verbose )); then
 			echo ifconfig $type$i group ${bni}. > /dev/stderr
 		fi
 		ifconfig $type$i group ${bni}.
@@ -100,7 +99,7 @@ alloc_disk_controller()
 }
 alloc_disk() {
 	local file="$1"
-	if [ $((diskcount%${maxdisks})) -eq 0 ]; then
+	if (( diskcount%maxdisks == 0 )); then
 		alloc_disk_controller $controllertype
 	fi
 
@@ -108,11 +107,11 @@ alloc_disk() {
 	args="$args -device $dname,drive=d$diskcount,"
 	case $controllertype in
 	ahci|isa-ide)
-		args="${args}bus=${controller}.$((diskcount%${maxdisks}))"
+		args="${args}bus=${controller}.$((diskcount%maxdisks))"
 	;;
 	lsi53c895a)
 		args="${args}bus=${controller}.0,"
-		args="${args}scsi-id=$((diskcount%${maxdisks}))"
+		args="${args}scsi-id=$((diskcount%maxdisks))"
 	;;
 	esac
 	let diskcount=diskcount+1
@@ -172,7 +171,7 @@ do
 				;;
 				macaddr)
 					mac="$rhs"
-					while echo "$mac" | grep "XX" > /dev/null 2>&1
+					while [[ $mac == *XX* ]]
 					do
 						xx=${hexdig[$((RANDOM%16))]}
 						xx=$xx${hexdig[$((RANDOM%16))]}
@@ -203,7 +202,7 @@ do
 				;;
 				macaddr)
 					mac="$rhs"
-					while echo "$mac" | grep "XX" > /dev/null 2>&1
+					while [[ $mac == *XX* ]]
 					do
 						xx=${hexdig[$((RANDOM%16))]}
 						xx=$xx${hexdig[$((RANDOM%16))]}
@@ -318,7 +317,7 @@ do
 		qemu-img create -f qcow2 $xtra $img $imagesize
 	fi
 	# ahci is not bootable on x86, so 1st must be ide
-	if [ firstdisk -eq 1 -a ahciboot -eq 0 ]; then
+	if (( firstdisk == 1 && ahciboot == 0 )); then
 		args="$args -drive file=$img,index=0,media=disk"
 		let firstdisk=firstdisk+1
 	else
@@ -331,7 +330,7 @@ done
 if [ "$cd" -a -f "$cd" ]; then
 	args="$args -cdrom $cd"
 else
-	if [ "${cd}" != "${cd#ftp://*}" -o "${cd}" != "${cd#http://*}" ]; then
+	if [[ $cd == +(ftp|http)'://'* ]]; then
 		cdtmpfile=`mktemp /tmp/.qrun.cd.XXXXXXXXXX`
 		trap 'rm $cdtmpfile' 0 1 15
 		ftp -o $cdtmpfile "$cd" > /dev/null 2>&1 && \
@@ -348,7 +347,7 @@ if [ "X$memsize" != "X" ]; then
 	args="$args $memsize"
 fi
 vlan=0
-while [ vlan -lt vlancount ]
+while (( vlan < vlancount ))
 do
 	if [ "${bridgeif[$vlan]}" ]; then
 		nicargs="nic,vlan=$vlan"
@@ -414,15 +413,13 @@ if [ "$machine" ]; then
 	args="$args -M $machine"
 fi
 
-if [ verbose -gt 0 ]; then
-	set -x
-fi
+(( verbose )) && set -x
 
 rdrargs=""
 if [ "$user" ]; then
 	chown $user $images
 	vlan=0
-	while [ vlan -lt vlancount ]
+	while (( vlan < vlancount ))
 	do
 		if [ "${tunif[$vlan]}" ]; then
 			rdrargs="$rdrargs -f /dev/${tunif[$vlan]}"
@@ -432,7 +429,7 @@ if [ "$user" ]; then
 	fdpass -u $user $rdrargs $qemu $args "$@"
 else
 	vlan=0
-	while [ vlan -lt vlancount ]
+	while (( vlan < vlancount ))
 	do
 		if [ "${tunif[$vlan]}" ]; then
 			rdrargs="$rdrargs $((vlan+3))<>/dev/${tunif[$vlan]}"
@@ -441,26 +438,24 @@ else
 	done
 	eval $qemu $args "$@" $rdrargs
 fi
-if [ verbose -gt 0 ]; then
-	set +x
-fi
+(( verbose )) && set +x
 
 (
 vlan=0
-while [ vlan -lt vlancount ]
+while (( vlan < vlancount ))
 do
 	if [ "${bridgeif[$vlan]}" ]; then
-		[ verbose -gt 0 ] && {
+		(( verbose )) && {
 			ifconfig ${bridgeif[$vlan]} > /dev/stderr
 			ifconfig ${tunif[$vlan]} > /dev/stderr
 		}
 		# wait until qemu exits, incase -daemonize is used, to cleanup
-		while [ "$(/sbin/ifconfig ${tunif[$vlan]}|grep "status: active")" ]
+		while [[ $(/sbin/ifconfig ${tunif[$vlan]}) == *'status: active'* ]]
 		do
 			sleep $((RANDOM%60+1))
 		done
 		ifconfig ${bridgeif[$vlan]} del ${tunif[$vlan]}
-		[ verbose -gt 0 ] && ifconfig ${bridgeif[$vlan]} > /dev/stderr
+		(( verbose )) && ifconfig ${bridgeif[$vlan]} > /dev/stderr
 	fi
 
 	if [ "${tunif[$vlan]}" ]; then
@@ -475,7 +470,7 @@ do
 
 	if [ "${bridgeif[$vlan]}" ]; then
 		# do not destroy a bridge unless there are no more members
-		if ! [ "$(ifconfig ${bridgeif[$vlan]}| grep "port [1-9]")" ]
+		if ! [[ $(ifconfig ${bridgeif[$vlan]}) == *'port '[1-9]* ]]
 		then
 			ifconfig ${bridgeif[$vlan]} down
 			ifconfig ${bridgeif[$vlan]} destroy

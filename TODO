@@ -1,8 +1,9 @@
 qrun
 - permit specifying rtable/rdomain per interface
+- consolodate macaddr generation into a function
 qnet
 - permit specifying rtable/rdomain per interface
-- use telnet/nc instead of conserver by default
+- use telnet/nc instead of conserver by default, still permit conserver as an option
 - save conserver.cf perhaps as $cfg.cf or somesuch, then run conserver with
   the local config
 - determine some way to make template updating/creating easier

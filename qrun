@@ -37,7 +37,7 @@ alloc_if() {
 	# creation is atomic
 	while ! ifconfig $type$i create > /dev/null 2>&1
 	do
-		let i=i+1
+		((i++))
 	done
 	case "$type" in
 	tun)
@@ -90,7 +90,7 @@ alloc_disk_controller()
 	local type=$1
 
 	controller="dc$controllercount"
-	let controllercount=controllercount+1
+	((controllercount++))
 	args="$args -device $type,id=$controller"
 	case $type in
 	ahci|isa-ide) maxdisks=4 dname=ide-drive;;
@@ -114,7 +114,7 @@ alloc_disk() {
 		args="${args}scsi-id=$((diskcount%maxdisks))"
 	;;
 	esac
-	let diskcount=diskcount+1
+	((diskcount++))
 }
 
 while [ "$1" ]
@@ -123,8 +123,8 @@ do
 	-b)
 		alloc_bridge "$2"
 		fd[$vlancount]="$tunfd"
-		let tunfd=tunfd+1
-		let vlancount=vlancount+1
+		((tunfd++))
+		((vlancount++))
 		shift
 	;;
 	-C) cd="$2"; shift;;
@@ -143,15 +143,15 @@ do
 	-n)
 		netcfg[$vlancount]="$2"
 		fd[$vlancount]="$tunfd"
-		let tunfd=tunfd+1
-		let vlancount=vlancount+1
+		((tunfd++))
+		((vlancount++))
 		shift
 	;;
 	-p)
 		tftpdir="$2"
 		tftpimg="/pxeboot"
 		usernet[$vlancount]=1
-		let vlancount=vlancount+1
+		((vlancount++))
 		shift
 	;;
 	-s) imagesize="$2"; shift;;
@@ -185,8 +185,8 @@ do
 				esac
 			done
 			fd[$vlancount]="$tunfd"
-			let tunfd=tunfd+1
-			let vlancount=vlancount+1
+			((tunfd++))
+			((vlancount++))
 		;;
 		netcfg*) # netcfg=10.0.7.1/24,model=rtl8139,macaddr=52:54:01:00:XX:XX
 			for pairs in $(echo "$2" | sed 's/,/ /g')
@@ -216,8 +216,8 @@ do
 				esac
 			done
 			fd[$vlancount]="$tunfd"
-			let tunfd=tunfd+1
-			let vlancount=vlancount+1
+			((tunfd++))
+			((vlancount++))
 		;;
 		console*) # console=com0,monitor=stdio,serial=stdio
 			for pairs in $(echo "$2" | sed 's/,/ /g')
@@ -267,7 +267,7 @@ do
 		shift
 	;;
 	-u) user="$2"; shift;;
-	-v) let verbose=verbose+1;;
+	-v) ((verbose++));;
 	--) shift;break;;
 	*) break;;
 	esac
@@ -319,7 +319,7 @@ do
 	# ahci is not bootable on x86, so 1st must be ide
 	if (( firstdisk == 1 && ahciboot == 0 )); then
 		args="$args -drive file=$img,index=0,media=disk"
-		let firstdisk=firstdisk+1
+		((firstdisk++))
 	else
 		# 32 is scsibus
 		# 4 is observed
@@ -405,7 +405,7 @@ do
 		fi
 		args="$args -net $nicargs -net $userargs"
 	fi
-	let vlan=vlan+1
+	((vlan++))
 done
 
 args="$args $console"
@@ -424,7 +424,7 @@ if [ "$user" ]; then
 		if [ "${tunif[$vlan]}" ]; then
 			rdrargs="$rdrargs -f /dev/${tunif[$vlan]}"
 		fi
-		let vlan=vlan+1
+		((vlan++))
 	done
 	fdpass -u $user $rdrargs $qemu $args "$@"
 else
@@ -434,7 +434,7 @@ else
 		if [ "${tunif[$vlan]}" ]; then
 			rdrargs="$rdrargs $((vlan+3))<>/dev/${tunif[$vlan]}"
 		fi
-		let vlan=vlan+1
+		((vlan++))
 	done
 	eval $qemu $args "$@" $rdrargs
 fi
@@ -476,6 +476,6 @@ do
 			ifconfig ${bridgeif[$vlan]} destroy
 		fi
 	fi
-	let vlan=vlan+1
+	((vlan++))
 done
 )&

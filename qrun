@@ -117,6 +117,23 @@ alloc_disk() {
 	((diskcount++))
 }
 
+random_mac() {
+        local is_unique=0 mac="$1" _mac
+        [[ $mac != ??:??:??:??:??:?? ]] && { echo "invald macaddr"; exit 1; }
+        until (( is_unique ))
+        do
+                _mac=$mac
+                while [[ $_mac == *XX* ]]
+                do
+                        xx=${hexdig[$((RANDOM%16))]}${hexdig[$((RANDOM%16))]}
+                        _mac=$(echo "$_mac" | sed "s/XX/$xx/")
+                done
+                [[ $(ifconfig;netstat -nr -f inet) != *" $_mac "* ]] && \
+		    is_unique=1
+        done
+        echo $_mac
+}
+
 while [ "$1" ]
 do
 	case "$1" in
@@ -170,14 +187,7 @@ do
 					model[$vlancount]="$rhs"
 				;;
 				macaddr)
-					mac="$rhs"
-					while [[ $mac == *XX* ]]
-					do
-						xx=${hexdig[$((RANDOM%16))]}
-						xx=$xx${hexdig[$((RANDOM%16))]}
-						mac=$(echo "$mac" | sed "s/XX/$xx/")
-					done
-					macaddr[$vlancount]="$mac"
+					macaddr[$vlancount]=$(random_mac $rhs)
 				;;
 				*)
 					echo "Oops, $lhs=$rhs unsupported"
@@ -201,14 +211,7 @@ do
 					model[$vlancount]="$rhs"
 				;;
 				macaddr)
-					mac="$rhs"
-					while [[ $mac == *XX* ]]
-					do
-						xx=${hexdig[$((RANDOM%16))]}
-						xx=$xx${hexdig[$((RANDOM%16))]}
-						mac=$(echo "$mac" | sed "s/XX/$xx/")
-					done
-					macaddr[$vlancount]="$mac"
+					macaddr[$vlancount]=$(random_mac $rhs)
 				;;
 				*)
 					echo "Oops, $lhs=$rhs unsupported"

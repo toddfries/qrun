@@ -63,19 +63,18 @@ alloc_if() {
 	echo $type$i
 }
 alloc_bridge() {
-	local name="$1"
+	local _g _if name="$1"
 	case "$name" in
 	group:*)
-		g="${name#group:*}"
+		_g="${name#group:*}"
 		# first bridge interface, incase something is wrong and we
 		# have multiple interfaces matching the group name
-		if=$(ifconfig $g 2>&1|awk \
-		   -F: '/^[a-z]/{print $1}'|head -1)
-		if ! [ "$if" ]; then
-			if=$(alloc_if bridge)
-			ifconfig $if group $g
+		_if=$(ifconfig $_g 2>&1|awk -F: '/^[a-z]/{print $1;exit}')
+		if ! [ "$_if" ]; then
+			_if=$(alloc_if bridge)
+			ifconfig $_if group $_g
 		fi
-		bridgeif[$vlancount]=$if
+		bridgeif[$vlancount]=$_if
 	;;
 	*)
 		bridgeif[$vlancount]=$(alloc_if bridge)

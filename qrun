@@ -92,8 +92,7 @@ alloc_disk_controller()
 {
 	local type=$1
 
-	controller="dc$controllercount"
-	((controllercount++))
+	controller="dc$((controllercount++))"
 	args="$args -device $type,id=$controller"
 	case $type in
 	ahci|isa-ide) maxdisks=4 dname=ide-drive;;
@@ -101,8 +100,8 @@ alloc_disk_controller()
 	esac
 }
 alloc_disk() {
-	local file="$1"
-	if (( diskcount%maxdisks == 0 )); then
+	local _dc=$((diskcount%maxdisks)) file="$1"
+	if (( _dc == 0 )); then
 		alloc_disk_controller $controllertype
 	fi
 
@@ -110,11 +109,11 @@ alloc_disk() {
 	args="$args -device $dname,drive=d$diskcount,"
 	case $controllertype in
 	ahci|isa-ide)
-		args="${args}bus=${controller}.$((diskcount%maxdisks))"
+		args="${args}bus=${controller}.$_dc"
 	;;
 	lsi53c895a)
 		args="${args}bus=${controller}.0,"
-		args="${args}scsi-id=$((diskcount%maxdisks))"
+		args="${args}scsi-id=$_dc"
 	;;
 	esac
 	((diskcount++))

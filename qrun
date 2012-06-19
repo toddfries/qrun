@@ -28,11 +28,15 @@ mode=i386
 
 set -A hexdig 0 1 2 3 4 5 6 7 8 9 a b c d e f
 
+root_check() {
+	if (( uid != 0 )); then
+		print "FATAL: Option $1 requires root privileges"
+		exit 1
+	fi
+}
+
 alloc_if() {
 	local i=0 type=$1
-
-	# cannot allocate an interface if !root
-	(( uid != 0 )) && exit 1
 
 	# creation is atomic
 	while ! ifconfig $type$i create > /dev/null 2>&1
@@ -119,7 +123,10 @@ alloc_disk() {
 
 random_mac() {
         local is_unique=0 mac="$1" _mac
-        [[ $mac != ??:??:??:??:??:?? ]] && { echo "invald macaddr"; exit 1; }
+        if [[ $mac != ??:??:??:??:??:?? ]]; then
+		echo "FATAL: invald macaddr \"$mac\""
+		exit 1
+	fi
         until (( is_unique ))
         do
                 _mac=$mac
@@ -138,6 +145,7 @@ while [ "$1" ]
 do
 	case "$1" in
 	-b)
+		root_check $1
 		alloc_bridge "$2"
 		fd[$vlancount]="$tunfd"
 		((tunfd++))
@@ -158,6 +166,7 @@ do
 	;;
 	-m) memsize="-m $2"; shift;;
 	-n)
+		root_check $1
 		netcfg[$vlancount]="$2"
 		fd[$vlancount]="$tunfd"
 		((tunfd++))
@@ -173,6 +182,7 @@ do
 	;;
 	-s) imagesize="$2"; shift;;
 	-o)
+		root_check $1
 		case "$2" in
 		bridge*) # bridge=ne0,model=rtl8139,macaddr=52:54:01:00:XX:XX
 			for pairs in $(echo "$2" | sed 's/,/ /g')
@@ -254,13 +264,13 @@ do
 				controllertype)
 					case "$rhs" in
 					isa-ide|ahci|lsi53c895a);;
-					*) echo "Oops, $lhs=$rhs unsupported"
+					*) echo "FATAL: $lhs=$rhs unsupported"
 					   exit 1
 					;;
 					esac
 					controllertype="$rhs"
 				;;
-				*) echo "Oops, $lhs=$rhs unsupported"
+				*) echo "FATAL: $lhs=$rhs unsupported"
 					   exit 1
 				;;
 				esac
@@ -269,7 +279,11 @@ do
 		esac
 		shift
 	;;
-	-u) user="$2"; shift;;
+	-u)
+		root_check $1
+		user="$2"
+		shift
+	;;
 	-v) ((verbose++));;
 	--) shift;break;;
 	*) break;;

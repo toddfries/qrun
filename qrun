@@ -23,7 +23,7 @@ memsize=""
 verbose=0
 tunfd=3     # allocate fd's since -net user will cause them to be off by one
 vlancount=0
-uid=`id -u`
+uid=$(id -u)
 mode=i386
 
 set -A hexdig 0 1 2 3 4 5 6 7 8 9 a b c d e f
@@ -346,7 +346,7 @@ if [ "$cd" -a -f "$cd" ]; then
 	args="$args -cdrom $cd"
 else
 	if [[ $cd == +(ftp|http)'://'* ]]; then
-		cdtmpfile=`mktemp /tmp/.qrun.cd.XXXXXXXXXX`
+		cdtmpfile=$(mktemp /tmp/.qrun.cd.XXXXXXXXXX)
 		trap 'rm $cdtmpfile' 0 1 15
 		ftp -o $cdtmpfile "$cd" > /dev/null 2>&1 && \
 			args="$args -cdrom $cdtmpfile"

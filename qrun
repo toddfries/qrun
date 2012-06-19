@@ -97,6 +97,7 @@ alloc_disk_controller()
 	case $type in
 	ahci|isa-ide) maxdisks=4 dname=ide-drive;;
 	lsi53c895a) maxdisks=7 dname=scsi-disk;;
+	usb-storage) maxdisks=256 dname=usb-disk;;
 	esac
 }
 alloc_disk() {
@@ -106,14 +107,16 @@ alloc_disk() {
 	fi
 
 	args="$args -drive id=d$diskcount,file=$file,if=none"
-	args="$args -device $dname,drive=d$diskcount,"
+	args="$args -device $dname,drive=d$diskcount"
 	case $controllertype in
 	ahci|isa-ide)
-		args="${args}bus=${controller}.$_dc"
+		args="${args},bus=${controller}.$_dc"
 	;;
 	lsi53c895a)
-		args="${args}bus=${controller}.0,"
-		args="${args}scsi-id=$_dc"
+		args="${args},bus=${controller}.0"
+		args="${args},scsi-id=$_dc"
+	;;
+	usb-storage)
 	;;
 	esac
 	((diskcount++))
@@ -262,7 +265,7 @@ do
 				case "$lhs" in
 				controllertype)
 					case "$rhs" in
-					isa-ide|ahci|lsi53c895a);;
+					isa-ide|ahci|lsi53c895a|usb-storage);;
 					*) echo "FATAL: $lhs=$rhs unsupported"
 					   exit 1
 					;;

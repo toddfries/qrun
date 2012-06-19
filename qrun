@@ -180,9 +180,9 @@ do
 	;;
 	-s) imagesize="$2"; shift;;
 	-o)
-		root_check $1
 		case "$2" in
 		bridge*) # bridge=ne0,model=rtl8139,macaddr=52:54:01:00:XX:XX
+			root_check $1
 			for pairs in $(echo "$2" | sed 's/,/ /g')
 			do
 				rhs=${pairs#*=}
@@ -207,6 +207,7 @@ do
 			((vlancount++))
 		;;
 		netcfg*) # netcfg=10.0.7.1/24,model=rtl8139,macaddr=52:54:01:00:XX:XX
+			root_check $1
 			for pairs in $(echo "$2" | sed 's/,/ /g')
 			do
 				rhs=${pairs#*=}

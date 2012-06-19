@@ -74,11 +74,11 @@ alloc_bridge() {
 			_if=$(alloc_if bridge)
 			ifconfig $_if group $_g
 		fi
-		bridgeif[$vlancount]=$_if
+		bridgeif[vlancount]=$_if
 	;;
 	*)
-		bridgeif[$vlancount]=$(alloc_if bridge)
-		bridge[$vlancount]="$name"
+		bridgeif[vlancount]=$(alloc_if bridge)
+		bridge[vlancount]="$name"
 	;;
 	esac
 }
@@ -145,7 +145,7 @@ do
 	-b)
 		root_check $1
 		alloc_bridge "$2"
-		fd[$vlancount]="$tunfd"
+		fd[vlancount]="$tunfd"
 		((tunfd++))
 		((vlancount++))
 		shift
@@ -165,8 +165,8 @@ do
 	-m) memsize="-m $2"; shift;;
 	-n)
 		root_check $1
-		netcfg[$vlancount]="$2"
-		fd[$vlancount]="$tunfd"
+		netcfg[vlancount]="$2"
+		fd[vlancount]="$tunfd"
 		((tunfd++))
 		((vlancount++))
 		shift
@@ -174,7 +174,7 @@ do
 	-p)
 		tftpdir="$2"
 		tftpimg="/pxeboot"
-		usernet[$vlancount]=1
+		usernet[vlancount]=1
 		((vlancount++))
 		shift
 	;;
@@ -192,17 +192,17 @@ do
 					alloc_bridge $rhs
 				;;
 				model)
-					model[$vlancount]="$rhs"
+					model[vlancount]="$rhs"
 				;;
 				macaddr)
-					macaddr[$vlancount]=$(random_mac $rhs)
+					macaddr[vlancount]=$(random_mac $rhs)
 				;;
 				*)
 					echo "Oops, $lhs=$rhs unsupported"
 				;;
 				esac
 			done
-			fd[$vlancount]="$tunfd"
+			fd[vlancount]="$tunfd"
 			((tunfd++))
 			((vlancount++))
 		;;
@@ -213,20 +213,20 @@ do
 				lhs=${pairs%=*}
 				case "$lhs" in
 				netcfg)
-					netcfg[$vlancount]="$rhs"
+					netcfg[vlancount]="$rhs"
 				;;
 				model)
-					model[$vlancount]="$rhs"
+					model[vlancount]="$rhs"
 				;;
 				macaddr)
-					macaddr[$vlancount]=$(random_mac $rhs)
+					macaddr[vlancount]=$(random_mac $rhs)
 				;;
 				*)
 					echo "Oops, $lhs=$rhs unsupported"
 				;;
 				esac
 			done
-			fd[$vlancount]="$tunfd"
+			fd[vlancount]="$tunfd"
 			((tunfd++))
 			((vlancount++))
 		;;
@@ -364,53 +364,53 @@ fi
 vlan=0
 while (( vlan < vlancount ))
 do
-	if [ "${bridgeif[$vlan]}" ]; then
+	if [ "${bridgeif[vlan]}" ]; then
 		nicargs="nic,vlan=$vlan"
-		if [ "${model[$vlan]}" ]; then
-			nicargs="$nicargs,model=${model[$vlan]}"
+		if [ "${model[vlan]}" ]; then
+			nicargs="$nicargs,model=${model[vlan]}"
 		fi
-		if [ "${macaddr[$vlan]}" ]; then
-			nicargs="$nicargs,macaddr=${macaddr[$vlan]}"
+		if [ "${macaddr[vlan]}" ]; then
+			nicargs="$nicargs,macaddr=${macaddr[vlan]}"
 		fi
-		args="$args -net $nicargs -net tap,vlan=$vlan,fd=${fd[$vlan]}"
+		args="$args -net $nicargs -net tap,vlan=$vlan,fd=${fd[vlan]}"
 
-		tunif[$vlan]=$(alloc_if tun)
-		ifconfig ${tunif[$vlan]} link0
-		ifconfig ${tunif[$vlan]} up
+		tunif[vlan]=$(alloc_if tun)
+		ifconfig ${tunif[vlan]} link0
+		ifconfig ${tunif[vlan]} up
 
-		ifconfig ${bridgeif[$vlan]} add ${tunif[$vlan]}
-		if [ "${bridge[$vlan]}" ]; then
-			ifconfig ${bridgeif[$vlan]} add ${bridge[vlan]}
+		ifconfig ${bridgeif[vlan]} add ${tunif[vlan]}
+		if [ "${bridge[vlan]}" ]; then
+			ifconfig ${bridgeif[vlan]} add ${bridge[vlan]}
 		fi
-		ifconfig ${bridgeif[$vlan]} up
+		ifconfig ${bridgeif[vlan]} up
 	fi
-	if [ "${netcfg[$vlan]}" ]; then
+	if [ "${netcfg[vlan]}" ]; then
 		nicargs="nic,vlan=$vlan"
-		if [ "${model[$vlan]}" ]; then
-			nicargs="$nicargs,model=${model[$vlan]}"
+		if [ "${model[vlan]}" ]; then
+			nicargs="$nicargs,model=${model[vlan]}"
 		fi
-		if [ "${macaddr[$vlan]}" ]; then
-			nicargs="$nicargs,macaddr=${macaddr[$vlan]}"
+		if [ "${macaddr[vlan]}" ]; then
+			nicargs="$nicargs,macaddr=${macaddr[vlan]}"
 		fi
-		args="$args -net $nicargs -net tap,vlan=$vlan,fd=${fd[$vlan]}"
-		tunif[$vlan]=$(alloc_if tun)
-		ifconfig ${tunif[$vlan]} link0
-		ifconfig ${tunif[$vlan]} ${netcfg[$vlan]}
-		ifconfig ${tunif[$vlan]} up
+		args="$args -net $nicargs -net tap,vlan=$vlan,fd=${fd[vlan]}"
+		tunif[vlan]=$(alloc_if tun)
+		ifconfig ${tunif[vlan]} link0
+		ifconfig ${tunif[vlan]} ${netcfg[vlan]}
+		ifconfig ${tunif[vlan]} up
 	fi
-	if [ "${usernet[$vlan]}" ]; then
+	if [ "${usernet[vlan]}" ]; then
 		nicargs="nic,vlan=$vlan"
-		if [ "${model[$vlan]}" ]; then
-			nicargs="$nicargs,model=${model[$vlan]}"
+		if [ "${model[vlan]}" ]; then
+			nicargs="$nicargs,model=${model[vlan]}"
 		fi
-		if [ "${macaddr[$vlan]}" ]; then
-			nicargs="$nicargs,macaddr=${macaddr[$vlan]}"
+		if [ "${macaddr[vlan]}" ]; then
+			nicargs="$nicargs,macaddr=${macaddr[vlan]}"
 		fi
 		userargs="user,vlan=$vlan"
 		if [ "$tftpdir" ]; then
 			userargs="$userargs,tftp=$tftpdir"
 			#set -A nicmap n o p
-			#args="$args -boot ${nicmap[$vlan]}"
+			#args="$args -boot ${nicmap[vlan]}"
 			args="$args -boot once=n,order=c"
 			args="$args -tftp $tftpdir"
 			args="$args -bootp $tftpimg"
@@ -436,8 +436,8 @@ if [ "$user" ]; then
 	vlan=0
 	while (( vlan < vlancount ))
 	do
-		if [ "${tunif[$vlan]}" ]; then
-			rdrargs="$rdrargs -f /dev/${tunif[$vlan]}"
+		if [ "${tunif[vlan]}" ]; then
+			rdrargs="$rdrargs -f /dev/${tunif[vlan]}"
 		fi
 		((vlan++))
 	done
@@ -446,8 +446,8 @@ else
 	vlan=0
 	while (( vlan < vlancount ))
 	do
-		if [ "${tunif[$vlan]}" ]; then
-			rdrargs="$rdrargs $((vlan+3))<>/dev/${tunif[$vlan]}"
+		if [ "${tunif[vlan]}" ]; then
+			rdrargs="$rdrargs $((vlan+3))<>/dev/${tunif[vlan]}"
 		fi
 		((vlan++))
 	done
@@ -459,36 +459,36 @@ fi
 vlan=0
 while (( vlan < vlancount ))
 do
-	if [ "${bridgeif[$vlan]}" ]; then
+	if [ "${bridgeif[vlan]}" ]; then
 		(( verbose )) && {
-			ifconfig ${bridgeif[$vlan]} > /dev/stderr
-			ifconfig ${tunif[$vlan]} > /dev/stderr
+			ifconfig ${bridgeif[vlan]} > /dev/stderr
+			ifconfig ${tunif[vlan]} > /dev/stderr
 		}
 		# wait until qemu exits, incase -daemonize is used, to cleanup
-		while [[ $(/sbin/ifconfig ${tunif[$vlan]}) == *'status: active'* ]]
+		while [[ $(/sbin/ifconfig ${tunif[vlan]}) == *'status: active'* ]]
 		do
 			sleep $((RANDOM%60+1))
 		done
-		ifconfig ${bridgeif[$vlan]} del ${tunif[$vlan]}
-		(( verbose )) && ifconfig ${bridgeif[$vlan]} > /dev/stderr
+		ifconfig ${bridgeif[vlan]} del ${tunif[vlan]}
+		(( verbose )) && ifconfig ${bridgeif[vlan]} > /dev/stderr
 	fi
 
-	if [ "${tunif[$vlan]}" ]; then
+	if [ "${tunif[vlan]}" ]; then
 		# wait until qemu exits, incase -daemonize is used, to cleanup
-		while [ "$(fstat /dev/${tunif[$vlan]}| grep -v "^USER")" ]
+		while [ "$(fstat /dev/${tunif[vlan]}| grep -v "^USER")" ]
 		do
 			sleep $((RANDOM%60+1))
 		done
-		ifconfig ${tunif[$vlan]} down
-		ifconfig ${tunif[$vlan]} destroy
+		ifconfig ${tunif[vlan]} down
+		ifconfig ${tunif[vlan]} destroy
 	fi
 
-	if [ "${bridgeif[$vlan]}" ]; then
+	if [ "${bridgeif[vlan]}" ]; then
 		# do not destroy a bridge unless there are no more members
-		if ! [[ $(ifconfig ${bridgeif[$vlan]}) == *'port '[1-9]* ]]
+		if ! [[ $(ifconfig ${bridgeif[vlan]}) == *'port '[1-9]* ]]
 		then
-			ifconfig ${bridgeif[$vlan]} down
-			ifconfig ${bridgeif[$vlan]} destroy
+			ifconfig ${bridgeif[vlan]} down
+			ifconfig ${bridgeif[vlan]} destroy
 		fi
 	fi
 	((vlan++))

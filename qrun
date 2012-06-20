@@ -30,7 +30,7 @@ set -A hexdig 0 1 2 3 4 5 6 7 8 9 a b c d e f
 
 root_check() {
 	if (( uid != 0 )); then
-		print "FATAL: Option $1 requires root privileges"
+		print "FATAL: Option -$1 requires root privileges"
 		exit 1
 	fi
 }
@@ -142,51 +142,46 @@ random_mac() {
         echo $_mac
 }
 
-while [ "$1" ]
+while getopts ':b:C:c:i:M:m:n:o:p:s:u:v' OPT
 do
-	case "$1" in
-	-b)
-		root_check $1
-		alloc_bridge "$2"
+	case "$OPT" in
+	b)
+		root_check $OPT
+		alloc_bridge "$OPTARG"
 		fd[vlancount]="$tunfd"
 		((tunfd++))
 		((vlancount++))
-		shift
 	;;
-	-C) cd="$2"; shift;;
-	-c) cd="$2";cdboot=1; shift;;
-	-i)
-		[ "$image" ] || image="$2"
-		images="$images $2"
-		shift
+	C) cd="$OPTARG";;
+	c) cd="$OPTARG";cdboot=1;;
+	i)
+		[ "$image" ] || image="$OPTARG"
+		images="$images $OPTARG"
 	;;
-	-M)
-		mode=$(echo $2|sed 's/:.*$//')
-		machine=$(echo $2|sed -n '/:/{s/^.*://;p;}')
-		shift
+	M)
+		mode=$(echo $OPTARG|sed 's/:.*$//')
+		machine=$(echo $OPTARG|sed -n '/:/{s/^.*://;p;}')
 	;;
-	-m) memsize="-m $2"; shift;;
-	-n)
-		root_check $1
-		netcfg[vlancount]="$2"
+	m) memsize="-m $OPTARG";;
+	n)
+		root_check $OPT
+		netcfg[vlancount]="$OPTARG"
 		fd[vlancount]="$tunfd"
 		((tunfd++))
 		((vlancount++))
-		shift
 	;;
-	-p)
-		tftpdir="$2"
+	p)
+		tftpdir="$OPTARG"
 		tftpimg="/pxeboot"
 		usernet[vlancount]=1
 		((vlancount++))
-		shift
 	;;
-	-s) imagesize="$2"; shift;;
-	-o)
-		case "$2" in
+	s) imagesize="$OPTARG";;
+	o)
+		case "$OPTARG" in
 		bridge*) # bridge=ne0,model=rtl8139,macaddr=52:54:01:00:XX:XX
-			root_check $1
-			for pairs in $(echo "$2" | sed 's/,/ /g')
+			root_check $OPT
+			for pairs in $(echo "$OPTARG" | sed 's/,/ /g')
 			do
 				rhs=${pairs#*=}
 				lhs=${pairs%=*}
@@ -210,8 +205,8 @@ do
 			((vlancount++))
 		;;
 		netcfg*) # netcfg=10.0.7.1/24,model=rtl8139,macaddr=52:54:01:00:XX:XX
-			root_check $1
-			for pairs in $(echo "$2" | sed 's/,/ /g')
+			root_check $OPT
+			for pairs in $(echo "$OPTARG" | sed 's/,/ /g')
 			do
 				rhs=${pairs#*=}
 				lhs=${pairs%=*}
@@ -235,7 +230,7 @@ do
 			((vlancount++))
 		;;
 		console*) # console=com0,monitor=stdio,serial=stdio
-			for pairs in $(echo "$2" | sed 's/,/ /g')
+			for pairs in $(echo "$OPTARG" | sed 's/,/ /g')
 			do
 				rhs=${pairs#*=}
 				lhs=${pairs%=*}
@@ -258,7 +253,7 @@ do
 			done
 		;;
 		controllertype*) # controllertype=ahci
-			for pairs in $(echo "$2" | sed 's/,/ /g')
+			for pairs in $(echo "$OPTARG" | sed 's/,/ /g')
 			do
 				rhs=${pairs#*=}
 				lhs=${pairs%=*}
@@ -279,19 +274,23 @@ do
 			done
 		;;
 		esac
-		shift
 	;;
-	-u)
-		root_check $1
-		user="$2"
-		shift
+	u)
+		root_check $OPT
+		user="$OPTARG"
 	;;
-	-v) ((verbose++));;
-	--) shift;break;;
-	*) break;;
+	v) ((verbose++));;
+	\?)
+		echo "FATAL: Illegal option -$OPTARG"
+		exit 1
+	;;
+	:)
+		echo "FATAL: Missing argument for option -$OPTARG"
+		exit 1
+	;;
 	esac
-	shift
 done
+shift $((OPTIND-1))
 
 
 if ! [ "$images" ]; then

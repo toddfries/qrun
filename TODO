@@ -1,6 +1,9 @@
 qrun
 - permit specifying rtable/rdomain per interface
 - consolodate macaddr generation into a function
+- make the hd interface even more generic
+- support virtio since tech@ has support coming
+- add beagle target:  qemu-system-arm -sd /tmp/sd-mine.img -nographic -M beaglexm -clock unix -usb -device usb-kbd -device usb-mouse
 qnet
 - permit specifying rtable/rdomain per interface
 - use telnet/nc instead of conserver by default, still permit conserver as an option

@@ -281,7 +281,8 @@ if ! [ "$images" ]; then
 fi
 
 usbadd="-usb -usbdevice tablet"
-qemu="qemu"
+qemu="false"
+mode=${mode:-i386}
 case "$mode" in
 arm)
 	qemu="qemu-system-arm"
@@ -298,7 +299,7 @@ amd64)
 	ahciboot=0
 ;;
 i386)
-	qemu="qemu"
+	qemu="qemu-system-i386"
 	args="$args $usbadd -no-fd-bootchk"
 	ahciboot=0
 ;;

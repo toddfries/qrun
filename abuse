@@ -1,0 +1,33 @@
+To abuse qemu and disks
+
+# at 8 disks per scsi controller, we run out of pci slots after disk 195...
+qrun -v -s 512G \
+	$(i=0; while [ i -lt 196 ]; do echo -n "-i d$i "; let i=i+1; done) \
+	-o controllertype=lsi53c895a \
+	-o console=com0 -p /home/todd/copy/snap/i386_pxe_sercon
+
+# the following will cause the host to hang out of memory allocation etc 
+qrun -v -s 8192T $(i=0; while [ i -lt 61 ]; do echo -n "-i d$i "; let i=i+1; done) -o console=com0 -p /home/todd/copy/snap/i386_pxe_sercon
+
+in the guest:
+
+fdisk -yi wd0
+echo "a a\n\n512m\n\nw\nq\n" | disklabel -E wd0
+newfs -O2 /dev/rwd0a
+mount /dev/wd0a /mnt
+mkdir /mnt/dev
+cd /mnt/dev
+ln -s /dev/MAKEDEV
+i=0 devs=128
+while [ i -lt $((devs+1)) ]; do
+	[ -c rsd${i}c ] || sh ./MAKEDEV sd$i
+	fdisk -yi /mnt/dev/rsd${i}c
+	echo "d *\nb\n\n*\na a\n\n\nRAID\nw\nq\n" | disklabel -E /mnt/dev/rsd${i}c
+	let i=i+1
+done
+eval bioctl -c 0 -l $(i=0
+	while [ i -lt $devs ]; do
+		[ i -gt 0 ] && echo -n ","
+		echo -n "/mnt/dev/sd${i}a"
+		let i=i+1
+	done) softraid0

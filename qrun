@@ -1,6 +1,6 @@
-#!/bin/sh
+#!/bin/ksh
 
-# Copyright (c) 2010 Todd T. Fries <todd@fries.net>
+# Copyright (c) 2010,2011,2012 Todd T. Fries <todd@fries.net>
 #
 # Permission to use, copy, modify, and distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -23,22 +23,25 @@ memsize=""
 verbose=0
 tunfd=3     # allocate fd's since -net user will cause them to be off by one
 vlancount=0
-uid=`id -u`
+uid=$(id -u)
 mode=i386
 
 set -A hexdig 0 1 2 3 4 5 6 7 8 9 a b c d e f
 
+root_check() {
+	if (( uid != 0 )); then
+		print "FATAL: Option -$1 requires root privileges"
+		exit 1
+	fi
+}
+
 alloc_if() {
 	local i=0 type=$1
 
-	# cannot allocate an interface if !root
-	if [ uid -ne 0 ]; then
-		exit 1
-	fi
 	# creation is atomic
 	while ! ifconfig $type$i create > /dev/null 2>&1
 	do
-		let i=i+1
+		((i++))
 	done
 	case "$type" in
 	tun)
@@ -52,7 +55,7 @@ alloc_if() {
 	esac
 	if [ "X$image" != "X" ]; then
 		bni=$(basename $image)
-		if [ verbose -gt 0 ]; then
+		if (( verbose )); then
 			echo ifconfig $type$i group ${bni}. > /dev/stderr
 		fi
 		ifconfig $type$i group ${bni}.
@@ -60,23 +63,22 @@ alloc_if() {
 	echo $type$i
 }
 alloc_bridge() {
-	local name="$1"
+	local _g _if name="$1"
 	case "$name" in
 	group:*)
-		g="${name#group:*}"
+		_g="${name#group:*}"
 		# first bridge interface, incase something is wrong and we
 		# have multiple interfaces matching the group name
-		if=$(ifconfig $g 2>&1|awk \
-		   -F: '/^[a-z]/{print $1}'|head -1)
-		if ! [ "$if" ]; then
-			if=$(alloc_if bridge)
-			ifconfig $if group $g
+		_if=$(ifconfig $_g 2>&1|awk -F: '/^[a-z]/{print $1;exit}')
+		if ! [ "$_if" ]; then
+			_if=$(alloc_if bridge)
+			ifconfig $_if group $_g
 		fi
-		bridgeif[$vlancount]=$if
+		bridgeif[vlancount]=$_if
 	;;
 	*)
-		bridgeif[$vlancount]=$(alloc_if bridge)
-		bridge[$vlancount]="$name"
+		bridgeif[vlancount]=$(alloc_if bridge)
+		bridge[vlancount]="$name"
 	;;
 	esac
 }
@@ -90,76 +92,96 @@ alloc_disk_controller()
 {
 	local type=$1
 
-	controller="dc$controllercount"
-	let controllercount=controllercount+1
+	controller="dc$((controllercount++))"
 	args="$args -device $type,id=$controller"
 	case $type in
 	ahci|isa-ide) maxdisks=4 dname=ide-drive;;
 	lsi53c895a) maxdisks=7 dname=scsi-disk;;
+	usb-storage) maxdisks=256 dname=usb-disk;;
 	esac
 }
 alloc_disk() {
-	local file="$1"
-	if [ $((diskcount%${maxdisks})) -eq 0 ]; then
+	local _dc=$((diskcount%maxdisks)) file="$1"
+	if (( _dc == 0 )); then
 		alloc_disk_controller $controllertype
 	fi
 
 	args="$args -drive id=d$diskcount,file=$file,if=none"
-	args="$args -device $dname,drive=d$diskcount,"
+	args="$args -device $dname,drive=d$diskcount"
 	case $controllertype in
 	ahci|isa-ide)
-		args="${args}bus=${controller}.$((diskcount%${maxdisks}))"
+		args="${args},bus=${controller}.$_dc"
 	;;
 	lsi53c895a)
-		args="${args}bus=${controller}.0,"
-		args="${args}scsi-id=$((diskcount%${maxdisks}))"
+		args="${args},bus=${controller}.0"
+		args="${args},scsi-id=$_dc"
+	;;
+	usb-storage)
 	;;
 	esac
-	let diskcount=diskcount+1
+	((diskcount++))
 }
 
-while [ "$1" ]
+random_mac() {
+        local is_unique=0 mac="$1" _mac
+        if [[ $mac != ??:??:??:??:??:?? ]]; then
+		echo "FATAL: invald macaddr \"$mac\""
+		exit 1
+	fi
+        until (( is_unique ))
+        do
+                _mac=$mac
+                while [[ $_mac == *XX* ]]
+                do
+                        xx=${hexdig[$((RANDOM%16))]}${hexdig[$((RANDOM%16))]}
+                        _mac=$(echo "$_mac" | sed "s/XX/$xx/")
+                done
+                [[ $(ifconfig;netstat -nr -f inet) != *" $_mac "* ]] && \
+		    is_unique=1
+        done
+        echo $_mac
+}
+
+while getopts ':b:C:c:i:M:m:n:o:p:s:u:v' OPT
 do
-	case "$1" in
-	-b)
-		alloc_bridge "$2"
-		fd[$vlancount]="$tunfd"
-		let tunfd=tunfd+1
-		let vlancount=vlancount+1
-		shift
+	case "$OPT" in
+	b)
+		root_check $OPT
+		alloc_bridge "$OPTARG"
+		fd[vlancount]="$tunfd"
+		((tunfd++))
+		((vlancount++))
 	;;
-	-C) cd="$2"; shift;;
-	-c) cd="$2";cdboot=1; shift;;
-	-i)
-		[ "$image" ] || image="$2"
-		images="$images $2"
-		shift
+	C) cd="$OPTARG";;
+	c) cd="$OPTARG";cdboot=1;;
+	i)
+		[ "$image" ] || image="$OPTARG"
+		images="$images $OPTARG"
 	;;
-	-M)
-		mode=$(echo $2|sed 's/:.*$//')
-		machine=$(echo $2|sed -n '/:/{s/^.*://;p;}')
-		shift
+	M)
+		mode=$(echo $OPTARG|sed 's/:.*$//')
+		machine=$(echo $OPTARG|sed -n '/:/{s/^.*://;p;}')
 	;;
-	-m) memsize="-m $2"; shift;;
-	-n)
-		netcfg[$vlancount]="$2"
-		fd[$vlancount]="$tunfd"
-		let tunfd=tunfd+1
-		let vlancount=vlancount+1
-		shift
+	m) memsize="-m $OPTARG";;
+	n)
+		root_check $OPT
+		netcfg[vlancount]="$OPTARG"
+		fd[vlancount]="$tunfd"
+		((tunfd++))
+		((vlancount++))
 	;;
-	-p)
-		tftpdir="$2"
+	p)
+		tftpdir="$OPTARG"
 		tftpimg="/pxeboot"
-		usernet[$vlancount]=1
-		let vlancount=vlancount+1
-		shift
+		usernet[vlancount]=1
+		((vlancount++))
 	;;
-	-s) imagesize="$2"; shift;;
-	-o)
-		case "$2" in
+	s) imagesize="$OPTARG";;
+	o)
+		case "$OPTARG" in
 		bridge*) # bridge=ne0,model=rtl8139,macaddr=52:54:01:00:XX:XX
-			for pairs in $(echo "$2" | sed 's/,/ /g')
+			root_check $OPT
+			for pairs in $(echo "$OPTARG" | sed 's/,/ /g')
 			do
 				rhs=${pairs#*=}
 				lhs=${pairs%=*}
@@ -168,60 +190,47 @@ do
 					alloc_bridge $rhs
 				;;
 				model)
-					model[$vlancount]="$rhs"
+					model[vlancount]="$rhs"
 				;;
 				macaddr)
-					mac="$rhs"
-					while echo "$mac" | grep "XX" > /dev/null 2>&1
-					do
-						xx=${hexdig[$((RANDOM%16))]}
-						xx=$xx${hexdig[$((RANDOM%16))]}
-						mac=$(echo "$mac" | sed "s/XX/$xx/")
-					done
-					macaddr[$vlancount]="$mac"
+					macaddr[vlancount]=$(random_mac $rhs)
 				;;
 				*)
 					echo "Oops, $lhs=$rhs unsupported"
 				;;
 				esac
 			done
-			fd[$vlancount]="$tunfd"
-			let tunfd=tunfd+1
-			let vlancount=vlancount+1
+			fd[vlancount]="$tunfd"
+			((tunfd++))
+			((vlancount++))
 		;;
 		netcfg*) # netcfg=10.0.7.1/24,model=rtl8139,macaddr=52:54:01:00:XX:XX
-			for pairs in $(echo "$2" | sed 's/,/ /g')
+			root_check $OPT
+			for pairs in $(echo "$OPTARG" | sed 's/,/ /g')
 			do
 				rhs=${pairs#*=}
 				lhs=${pairs%=*}
 				case "$lhs" in
 				netcfg)
-					netcfg[$vlancount]="$rhs"
+					netcfg[vlancount]="$rhs"
 				;;
 				model)
-					model[$vlancount]="$rhs"
+					model[vlancount]="$rhs"
 				;;
 				macaddr)
-					mac="$rhs"
-					while echo "$mac" | grep "XX" > /dev/null 2>&1
-					do
-						xx=${hexdig[$((RANDOM%16))]}
-						xx=$xx${hexdig[$((RANDOM%16))]}
-						mac=$(echo "$mac" | sed "s/XX/$xx/")
-					done
-					macaddr[$vlancount]="$mac"
+					macaddr[vlancount]=$(random_mac $rhs)
 				;;
 				*)
 					echo "Oops, $lhs=$rhs unsupported"
 				;;
 				esac
 			done
-			fd[$vlancount]="$tunfd"
-			let tunfd=tunfd+1
-			let vlancount=vlancount+1
+			fd[vlancount]="$tunfd"
+			((tunfd++))
+			((vlancount++))
 		;;
 		console*) # console=com0,monitor=stdio,serial=stdio
-			for pairs in $(echo "$2" | sed 's/,/ /g')
+			for pairs in $(echo "$OPTARG" | sed 's/,/ /g')
 			do
 				rhs=${pairs#*=}
 				lhs=${pairs%=*}
@@ -244,36 +253,44 @@ do
 			done
 		;;
 		controllertype*) # controllertype=ahci
-			for pairs in $(echo "$2" | sed 's/,/ /g')
+			for pairs in $(echo "$OPTARG" | sed 's/,/ /g')
 			do
 				rhs=${pairs#*=}
 				lhs=${pairs%=*}
 				case "$lhs" in
 				controllertype)
 					case "$rhs" in
-					isa-ide|ahci|lsi53c895a);;
-					*) echo "Oops, $lhs=$rhs unsupported"
+					isa-ide|ahci|lsi53c895a|usb-storage);;
+					*) echo "FATAL: $lhs=$rhs unsupported"
 					   exit 1
 					;;
 					esac
 					controllertype="$rhs"
 				;;
-				*) echo "Oops, $lhs=$rhs unsupported"
+				*) echo "FATAL: $lhs=$rhs unsupported"
 					   exit 1
 				;;
 				esac
 			done
 		;;
 		esac
-		shift
 	;;
-	-u) user="$2"; shift;;
-	-v) let verbose=verbose+1;;
-	--) shift;break;;
-	*) break;;
+	u)
+		root_check $OPT
+		user="$OPTARG"
+	;;
+	v) ((verbose++));;
+	\?)
+		echo "FATAL: Illegal option -$OPTARG"
+		exit 1
+	;;
+	:)
+		echo "FATAL: Missing argument for option -$OPTARG"
+		exit 1
+	;;
 	esac
-	shift
 done
+shift $((OPTIND-1))
 
 
 if ! [ "$images" ]; then
@@ -287,7 +304,7 @@ case "$mode" in
 arm)
 	qemu="qemu-system-arm"
 	args="$args $usbadd"
-	ahciboot=1
+	ahciboot=0
 ;;
 sparc)
 	qemu="qemu-system-sparc"
@@ -319,9 +336,9 @@ do
 		qemu-img create -f qcow2 $xtra $img $imagesize
 	fi
 	# ahci is not bootable on x86, so 1st must be ide
-	if [ firstdisk -eq 1 -a ahciboot -eq 0 ]; then
+	if (( firstdisk == 1 && ahciboot == 0 )); then
 		args="$args -drive file=$img,index=0,media=disk"
-		let firstdisk=firstdisk+1
+		((firstdisk++))
 	else
 		# 32 is scsibus
 		# 4 is observed
@@ -332,8 +349,8 @@ done
 if [ "$cd" -a -f "$cd" ]; then
 	args="$args -cdrom $cd"
 else
-	if [ "${cd}" != "${cd#ftp://*}" -o "${cd}" != "${cd#http://*}" ]; then
-		cdtmpfile=`mktemp /tmp/.qrun.cd.XXXXXXXXXX`
+	if [[ $cd == +(ftp|http)'://'* ]]; then
+		cdtmpfile=$(mktemp /tmp/.qrun.cd.XXXXXXXXXX)
 		trap 'rm $cdtmpfile' 0 1 15
 		ftp -o $cdtmpfile "$cd" > /dev/null 2>&1 && \
 			args="$args -cdrom $cdtmpfile"
@@ -349,55 +366,55 @@ if [ "X$memsize" != "X" ]; then
 	args="$args $memsize"
 fi
 vlan=0
-while [ vlan -lt vlancount ]
+while (( vlan < vlancount ))
 do
-	if [ "${bridgeif[$vlan]}" ]; then
+	if [ "${bridgeif[vlan]}" ]; then
 		nicargs="nic,vlan=$vlan"
-		if [ "${model[$vlan]}" ]; then
-			nicargs="$nicargs,model=${model[$vlan]}"
+		if [ "${model[vlan]}" ]; then
+			nicargs="$nicargs,model=${model[vlan]}"
 		fi
-		if [ "${macaddr[$vlan]}" ]; then
-			nicargs="$nicargs,macaddr=${macaddr[$vlan]}"
+		if [ "${macaddr[vlan]}" ]; then
+			nicargs="$nicargs,macaddr=${macaddr[vlan]}"
 		fi
-		args="$args -net $nicargs -net tap,vlan=$vlan,fd=${fd[$vlan]}"
+		args="$args -net $nicargs -net tap,vlan=$vlan,fd=${fd[vlan]}"
 
-		tunif[$vlan]=$(alloc_if tun)
-		ifconfig ${tunif[$vlan]} link0
-		ifconfig ${tunif[$vlan]} up
+		tunif[vlan]=$(alloc_if tun)
+		ifconfig ${tunif[vlan]} link0
+		ifconfig ${tunif[vlan]} up
 
-		ifconfig ${bridgeif[$vlan]} add ${tunif[$vlan]}
-		if [ "${bridge[$vlan]}" ]; then
-			ifconfig ${bridgeif[$vlan]} add ${bridge[vlan]}
+		ifconfig ${bridgeif[vlan]} add ${tunif[vlan]}
+		if [ "${bridge[vlan]}" ]; then
+			ifconfig ${bridgeif[vlan]} add ${bridge[vlan]}
 		fi
-		ifconfig ${bridgeif[$vlan]} up
+		ifconfig ${bridgeif[vlan]} up
 	fi
-	if [ "${netcfg[$vlan]}" ]; then
+	if [ "${netcfg[vlan]}" ]; then
 		nicargs="nic,vlan=$vlan"
-		if [ "${model[$vlan]}" ]; then
-			nicargs="$nicargs,model=${model[$vlan]}"
+		if [ "${model[vlan]}" ]; then
+			nicargs="$nicargs,model=${model[vlan]}"
 		fi
-		if [ "${macaddr[$vlan]}" ]; then
-			nicargs="$nicargs,macaddr=${macaddr[$vlan]}"
+		if [ "${macaddr[vlan]}" ]; then
+			nicargs="$nicargs,macaddr=${macaddr[vlan]}"
 		fi
-		args="$args -net $nicargs -net tap,vlan=$vlan,fd=${fd[$vlan]}"
-		tunif[$vlan]=$(alloc_if tun)
-		ifconfig ${tunif[$vlan]} link0
-		ifconfig ${tunif[$vlan]} ${netcfg[$vlan]}
-		ifconfig ${tunif[$vlan]} up
+		args="$args -net $nicargs -net tap,vlan=$vlan,fd=${fd[vlan]}"
+		tunif[vlan]=$(alloc_if tun)
+		ifconfig ${tunif[vlan]} link0
+		ifconfig ${tunif[vlan]} ${netcfg[vlan]}
+		ifconfig ${tunif[vlan]} up
 	fi
-	if [ "${usernet[$vlan]}" ]; then
+	if [ "${usernet[vlan]}" ]; then
 		nicargs="nic,vlan=$vlan"
-		if [ "${model[$vlan]}" ]; then
-			nicargs="$nicargs,model=${model[$vlan]}"
+		if [ "${model[vlan]}" ]; then
+			nicargs="$nicargs,model=${model[vlan]}"
 		fi
-		if [ "${macaddr[$vlan]}" ]; then
-			nicargs="$nicargs,macaddr=${macaddr[$vlan]}"
+		if [ "${macaddr[vlan]}" ]; then
+			nicargs="$nicargs,macaddr=${macaddr[vlan]}"
 		fi
 		userargs="user,vlan=$vlan"
 		if [ "$tftpdir" ]; then
 			userargs="$userargs,tftp=$tftpdir"
 			#set -A nicmap n o p
-			#args="$args -boot ${nicmap[$vlan]}"
+			#args="$args -boot ${nicmap[vlan]}"
 			args="$args -boot once=n,order=c"
 			args="$args -tftp $tftpdir"
 			args="$args -bootp $tftpimg"
@@ -407,7 +424,7 @@ do
 		fi
 		args="$args -net $nicargs -net $userargs"
 	fi
-	let vlan=vlan+1
+	((vlan++))
 done
 
 args="$args $console"
@@ -415,73 +432,69 @@ if [ "$machine" ]; then
 	args="$args -M $machine"
 fi
 
-if [ verbose -gt 0 ]; then
-	set -x
-fi
+(( verbose )) && set -x
 
 rdrargs=""
 if [ "$user" ]; then
 	chown $user $images
 	vlan=0
-	while [ vlan -lt vlancount ]
+	while (( vlan < vlancount ))
 	do
-		if [ "${tunif[$vlan]}" ]; then
-			rdrargs="$rdrargs -f /dev/${tunif[$vlan]}"
+		if [ "${tunif[vlan]}" ]; then
+			rdrargs="$rdrargs -f /dev/${tunif[vlan]}"
 		fi
-		let vlan=vlan+1
+		((vlan++))
 	done
 	fdpass -u $user $rdrargs $qemu $args "$@"
 else
 	vlan=0
-	while [ vlan -lt vlancount ]
+	while (( vlan < vlancount ))
 	do
-		if [ "${tunif[$vlan]}" ]; then
-			rdrargs="$rdrargs $((vlan+3))<>/dev/${tunif[$vlan]}"
+		if [ "${tunif[vlan]}" ]; then
+			rdrargs="$rdrargs $((vlan+3))<>/dev/${tunif[vlan]}"
 		fi
-		let vlan=vlan+1
+		((vlan++))
 	done
 	eval $qemu $args "$@" $rdrargs
 fi
-if [ verbose -gt 0 ]; then
-	set +x
-fi
+(( verbose )) && set +x
 
 (
 vlan=0
-while [ vlan -lt vlancount ]
+while (( vlan < vlancount ))
 do
-	if [ "${bridgeif[$vlan]}" ]; then
-		[ verbose -gt 0 ] && {
-			ifconfig ${bridgeif[$vlan]} > /dev/stderr
-			ifconfig ${tunif[$vlan]} > /dev/stderr
+	if [ "${bridgeif[vlan]}" ]; then
+		(( verbose )) && {
+			ifconfig ${bridgeif[vlan]} > /dev/stderr
+			ifconfig ${tunif[vlan]} > /dev/stderr
 		}
 		# wait until qemu exits, incase -daemonize is used, to cleanup
-		while [ "$(/sbin/ifconfig ${tunif[$vlan]}|grep "status: active")" ]
+		while [[ $(/sbin/ifconfig ${tunif[vlan]}) == *'status: active'* ]]
 		do
 			sleep $((RANDOM%60+1))
 		done
-		ifconfig ${bridgeif[$vlan]} del ${tunif[$vlan]}
-		[ verbose -gt 0 ] && ifconfig ${bridgeif[$vlan]} > /dev/stderr
+		ifconfig ${bridgeif[vlan]} del ${tunif[vlan]}
+		(( verbose )) && ifconfig ${bridgeif[vlan]} > /dev/stderr
 	fi
 
-	if [ "${tunif[$vlan]}" ]; then
+	if [ "${tunif[vlan]}" ]; then
 		# wait until qemu exits, incase -daemonize is used, to cleanup
-		while [ "$(fstat /dev/${tunif[$vlan]}| grep -v "^USER")" ]
+		while [ "$(fstat /dev/${tunif[vlan]}| grep -v "^USER")" ]
 		do
 			sleep $((RANDOM%60+1))
 		done
-		ifconfig ${tunif[$vlan]} down
-		ifconfig ${tunif[$vlan]} destroy
+		ifconfig ${tunif[vlan]} down
+		ifconfig ${tunif[vlan]} destroy
 	fi
 
-	if [ "${bridgeif[$vlan]}" ]; then
+	if [ "${bridgeif[vlan]}" ]; then
 		# do not destroy a bridge unless there are no more members
-		if ! [ "$(ifconfig ${bridgeif[$vlan]}| grep "port [1-9]")" ]
+		if ! [[ $(ifconfig ${bridgeif[vlan]}) == *'port '[1-9]* ]]
 		then
-			ifconfig ${bridgeif[$vlan]} down
-			ifconfig ${bridgeif[$vlan]} destroy
+			ifconfig ${bridgeif[vlan]} down
+			ifconfig ${bridgeif[vlan]} destroy
 		fi
 	fi
-	let vlan=vlan+1
+	((vlan++))
 done
 )&

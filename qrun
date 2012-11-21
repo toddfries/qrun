@@ -354,9 +354,9 @@ else
 		ftp -o $cdtmpfile "$cd" > /dev/null 2>&1 && \
 			args="$args -cdrom $cdtmpfile"
 	fi
-	if [ "$cdboot" ]; then
-		args="$args -boot once=d,order=c"
-	fi
+fi
+if [ "$cdboot" ]; then
+	args="$args -boot once=d,order=c"
 fi
 
 #args="$args -watchdog i6300esb"

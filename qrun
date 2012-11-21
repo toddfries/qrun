@@ -298,7 +298,8 @@ if ! [ "$images" ]; then
 fi
 
 usbadd="-usb -usbdevice tablet"
-qemu="qemu"
+qemu="false"
+mode=${mode:-i386}
 case "$mode" in
 arm)
 	qemu="qemu-system-arm"

@@ -301,22 +301,41 @@ usbadd="-usb -usbdevice tablet"
 qemu="false"
 mode=${mode:-i386}
 case "$mode" in
-arm)
-	qemu="qemu-system-arm"
-	args="$args $usbadd"
-	ahciboot=0
-;;
-sparc)
-	qemu="qemu-system-sparc"
-	ahciboot=0
-;;
-amd64)
+amd64|amd64:*)
 	qemu="qemu-system-x86_64"
 	args="$args $usbadd -no-fd-bootchk"
 	ahciboot=0
 ;;
-i386)
+alpha|alpha:*)
+	qemu="qemu-system-alpha"
+	ahciboot=0
+;;
+zaurus|zaurus:*)
+	qemu="qemu-system-arm -M z2"
+	args="$args $usbadd"
+	ahciboot=0
+;;
+arm|arm:*)
+	qemu="qemu-system-arm"
+	args="$args $usbadd"
+	ahciboot=0
+;;
+i386|i386:*)
 	qemu="qemu-system-i386"
+	args="$args $usbadd -no-fd-bootchk"
+	ahciboot=0
+;;
+macppc|macppc:*)
+	qemu="qemu-system-ppc -cpu G4"
+	args="$args $usbadd -no-fd-bootchk"
+	ahciboot=0
+;;
+sparc|sparc:*)
+	qemu="qemu-system-sparc"
+	ahciboot=0
+;;
+sparc64|sparc64:*)
+	qemu="qemu-system-sparc64"
 	args="$args $usbadd -no-fd-bootchk"
 	ahciboot=0
 ;;
@@ -325,6 +344,10 @@ i386)
 	exit 1
 ;;
 esac
+if [ "${mode#*:}" != "${mode}" ]; then
+	args="${mode#*:}"
+	qemu="$qemu -cpu $args"
+fi
 
 for img in $images
 do

@@ -340,7 +340,7 @@ sparc64|sparc64:*)
 	ahciboot=0
 ;;
 *)
-	echo "unlimited mode, $mode"
+	echo "unimplemented mode, $mode"
 	exit 1
 ;;
 esac

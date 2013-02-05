@@ -327,7 +327,7 @@ i386|i386:*)
 ;;
 macppc|macppc:*)
 	qemu="qemu-system-ppc -cpu G4"
-	args="$args $usbadd -no-fd-bootchk"
+	args="$args $usbadd"
 	ahciboot=0
 ;;
 sparc|sparc:*)
@@ -336,7 +336,7 @@ sparc|sparc:*)
 ;;
 sparc64|sparc64:*)
 	qemu="qemu-system-sparc64"
-	args="$args $usbadd -no-fd-bootchk"
+	#args="$args $usbadd" # XXX really?
 	ahciboot=0
 ;;
 *)

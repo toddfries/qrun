@@ -185,7 +185,7 @@ do
 			for pairs in $(echo "$OPTARG" | sed 's/,/ /g')
 			do
 				rhs=${pairs#*=}
-				lhs=${pairs%=*}
+				lhs=${pairs%%=*}
 				case "$lhs" in
 				bridge)
 					alloc_bridge $rhs
@@ -197,7 +197,7 @@ do
 					macaddr[vlancount]=$(random_mac $rhs)
 				;;
 				*)
-					echo "Oops, $lhs=$rhs unsupported"
+					echo "Oops, lhs=$lhs rhs=$rhs unsupported"
 				;;
 				esac
 			done
@@ -210,7 +210,7 @@ do
 			for pairs in $(echo "$OPTARG" | sed 's/,/ /g')
 			do
 				rhs=${pairs#*=}
-				lhs=${pairs%=*}
+				lhs=${pairs%%=*}
 				case "$lhs" in
 				netcfg)
 					netcfg[vlancount]="$rhs"
@@ -222,7 +222,7 @@ do
 					macaddr[vlancount]=$(random_mac $rhs)
 				;;
 				*)
-					echo "Oops, $lhs=$rhs unsupported"
+					echo "Oops, lhs=$lhs rhs=$rhs unsupported"
 				;;
 				esac
 			done
@@ -230,16 +230,27 @@ do
 			((tunfd++))
 			((vlancount++))
 		;;
-		console*) # console=com0,monitor=stdio,serial=unix,vnc=:3
-			for pairs in $(echo "$OPTARG" | sed 's/,/ /g')
+		console*) # console=[com0|vnc=:3],monitor=stdio,serial=unix
+			# if specifying '-o console' clear system default
+			console=""
+			# do not specify multiple '-o console' last one will
+			# clear earlier ones!
+			for pairs in $(echo "$OPTARG" | sed 's/,/ /g;s/;/,/g')
 			do
 				rhs=${pairs#*=}
-				lhs=${pairs%=*}
+				lhs=${pairs%%=*}
 				case "$lhs" in
 				console)
 					if [ "$rhs" = "com0" ]; then
 						console="-nographic"
+						continue
 					fi
+					if [[ "$rhs" == vnc* ]]; then
+						console="$console -vnc ${rhs#*=}"
+						continue
+					fi
+					echo "Oops, (console) lhs=$lhs rhs=$rhs unsupported"
+					continue
 				;;
 				monitor)
 					console="$console -monitor $rhs"
@@ -251,7 +262,7 @@ do
 					console="$console -vnc $rhs"
 				;;
 				*)
-					echo "Oops, $lhs=$rhs unsupported"
+					echo "Oops, lhs=$lhs rhs=$rhs unsupported"
 				;;
 				esac
 			done
@@ -260,18 +271,18 @@ do
 			for pairs in $(echo "$OPTARG" | sed 's/,/ /g')
 			do
 				rhs=${pairs#*=}
-				lhs=${pairs%=*}
+				lhs=${pairs%%=*}
 				case "$lhs" in
 				controllertype)
 					case "$rhs" in
 					isa-ide|ahci|lsi53c895a|usb-storage);;
-					*) echo "FATAL: $lhs=$rhs unsupported"
+					*) echo "FATAL: lhs=$lhs rhs=$rhs unsupported"
 					   exit 1
 					;;
 					esac
 					controllertype="$rhs"
 				;;
-				*) echo "FATAL: $lhs=$rhs unsupported"
+				*) echo "FATAL: lhs=$lhs rhs=$rhs unsupported"
 					   exit 1
 				;;
 				esac
@@ -315,7 +326,7 @@ alpha)
 	ahciboot=0
 ;;
 zaurus)
-	qemu="qemu-system-arm -M z2"
+	qemu="qemu-system-arm -M spitz"
 	args="$args $usbadd"
 	ahciboot=0
 ;;

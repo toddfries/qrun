@@ -159,8 +159,9 @@ do
 		images="$images $OPTARG"
 	;;
 	M)
-		mode=$(echo $OPTARG|sed 's/:.*$//')
-		machine=$(echo $OPTARG|sed -n '/:/{s/^.*://;p;}')
+		mode=$(echo "$OPTARG"|sed 's/:.*$//')
+		machine=$(echo "$OPTARG"|sed -n '/:/{s/^[^:]*://;s/:.*$//;p;}')
+		cpu=$(echo "$OPTARG"|sed -n '/^[^:][^:]*:.*:/{s/^.*://;p;}')
 	;;
 	m) memsize="-m $OPTARG";;
 	n)
@@ -229,7 +230,7 @@ do
 			((tunfd++))
 			((vlancount++))
 		;;
-		console*) # console=com0,monitor=stdio,serial=stdio
+		console*) # console=com0,monitor=stdio,serial=unix,vnc=:3
 			for pairs in $(echo "$OPTARG" | sed 's/,/ /g')
 			do
 				rhs=${pairs#*=}
@@ -245,6 +246,9 @@ do
 				;;
 				serial)
 					console="$console -serial $rhs"
+				;;
+				vnc)
+					console="$console -vnc $rhs"
 				;;
 				*)
 					echo "Oops, $lhs=$rhs unsupported"
@@ -301,40 +305,40 @@ usbadd="-usb -usbdevice tablet"
 qemu="false"
 mode=${mode:-i386}
 case "$mode" in
-amd64|amd64:*)
+amd64)
 	qemu="qemu-system-x86_64"
 	args="$args $usbadd -no-fd-bootchk"
 	ahciboot=0
 ;;
-alpha|alpha:*)
+alpha)
 	qemu="qemu-system-alpha"
 	ahciboot=0
 ;;
-zaurus|zaurus:*)
+zaurus)
 	qemu="qemu-system-arm -M z2"
 	args="$args $usbadd"
 	ahciboot=0
 ;;
-arm|arm:*)
+arm)
 	qemu="qemu-system-arm"
 	args="$args $usbadd"
 	ahciboot=0
 ;;
-i386|i386:*)
+i386)
 	qemu="qemu-system-i386"
 	args="$args $usbadd -no-fd-bootchk"
 	ahciboot=0
 ;;
-macppc|macppc:*)
+macppc)
 	qemu="qemu-system-ppc -cpu G4"
 	args="$args $usbadd"
 	ahciboot=0
 ;;
-sparc|sparc:*)
+sparc)
 	qemu="qemu-system-sparc"
 	ahciboot=0
 ;;
-sparc64|sparc64:*)
+sparc64)
 	qemu="qemu-system-sparc64"
 	#args="$args $usbadd" # XXX really?
 	ahciboot=0
@@ -344,9 +348,8 @@ sparc64|sparc64:*)
 	exit 1
 ;;
 esac
-if [ "${mode#*:}" != "${mode}" ]; then
-	args="${mode#*:}"
-	qemu="$qemu -cpu $args"
+if [ "${cpu}" ]; then
+	qemu="$qemu -cpu \"$cpu\""
 fi
 
 for img in $images
@@ -433,6 +436,8 @@ do
 		if [ "${macaddr[vlan]}" ]; then
 			nicargs="$nicargs,macaddr=${macaddr[vlan]}"
 		fi
+		# XXX calculate local port based on macaddr!
+		nicargs="$nicargs,hostfwd=tcp:[::1]:2022-:22"
 		userargs="user,vlan=$vlan"
 		if [ "$tftpdir" ]; then
 			userargs="$userargs,tftp=$tftpdir"
@@ -455,7 +460,7 @@ if [ "$machine" ]; then
 	args="$args -M $machine"
 fi
 
-(( verbose )) && set -x
+(( verbose>1 )) && set -x
 
 rdrargs=""
 if [ "$user" ]; then
@@ -478,6 +483,7 @@ else
 		fi
 		((vlan++))
 	done
+	(( verbose )) && echo "Starting: $qemu $args" "$@" "$rdrargs"
 	eval $qemu $args "$@" $rdrargs
 fi
 (( verbose )) && set +x

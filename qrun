@@ -242,11 +242,13 @@ do
 				case "$lhs" in
 				console)
 					if [ "$rhs" = "com0" ]; then
+						console="-parallel none -display none -vga none"
+						console="-parallel none -display none"
 						console="-nographic"
 						continue
 					fi
 					if [[ "$rhs" == vnc* ]]; then
-						console="$console -vnc ${rhs#*=}"
+						console="-vnc ${rhs#*=}"
 						continue
 					fi
 					echo "Oops, (console) lhs=$lhs rhs=$rhs unsupported"
@@ -326,7 +328,7 @@ alpha)
 	ahciboot=0
 ;;
 zaurus)
-	qemu="qemu-system-arm -M spitz"
+	qemu="qemu-system-arm -M spitz -portrait"
 	args="$args $usbadd"
 	ahciboot=0
 ;;
@@ -494,7 +496,10 @@ else
 		fi
 		((vlan++))
 	done
-	(( verbose )) && echo "Starting: $qemu $args" "$@" "$rdrargs"
+	if (( verbose )); then
+		echo "Starting: $qemu $args" "$@" "$rdrargs"
+		$qemu -version
+	fi
 	eval $qemu $args "$@" $rdrargs
 fi
 (( verbose )) && set +x

@@ -362,7 +362,7 @@ sparc64)
 ;;
 esac
 if [ "${cpu}" ]; then
-	qemu="$qemu -cpu \"$cpu\""
+	qemu="$qemu -cpu $cpu"
 fi
 
 for img in $images
@@ -450,7 +450,7 @@ do
 			nicargs="$nicargs,macaddr=${macaddr[vlan]}"
 		fi
 		# XXX calculate local port based on macaddr!
-		nicargs="$nicargs,hostfwd=tcp:[::1]:2022-:22"
+		#nicargs="$nicargs,hostfwd=tcp:[::1]:2022-:22"
 		userargs="user,vlan=$vlan"
 		if [ "$tftpdir" ]; then
 			userargs="$userargs,tftp=$tftpdir"
@@ -486,6 +486,10 @@ if [ "$user" ]; then
 		fi
 		((vlan++))
 	done
+	if (( verbose )); then
+		echo "Starting: $qemu $args" "$@"
+		$qemu -version
+	fi
 	fdpass -u $user $rdrargs $qemu $args "$@"
 else
 	vlan=0

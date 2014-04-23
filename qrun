@@ -88,16 +88,22 @@ controllercount=0
 maxdisks=1
 firstdisk=1
 controllertype=ahci
+iftype=none
 alloc_disk_controller()
 {
 	local type=$1
-
-	controller="dc$((controllercount++))"
-	args="$args -device $type,id=$controller"
+	case "$type" in
+	virtio*) ;;
+	*)
+		controller="dc$((controllercount++))"
+		args="$args -device $type,id=$controller"
+	;;
+	esac
 	case $type in
-	ahci|isa-ide) maxdisks=4 dname=ide-drive;;
-	lsi53c895a) maxdisks=7 dname=scsi-disk;;
-	usb-storage) maxdisks=256 dname=usb-disk;;
+	ahci|isa-ide) maxdisks=4 dname=ide-drive iftype=none;;
+	lsi53c895a) maxdisks=7 dname=scsi-disk iftype=none;;
+	usb-storage) maxdisks=256 dname=usb-disk iftype=none;;
+	virtio-blk-pci) maxdisks=256 dname=virtio-blk-pci iftype=virtio;;
 	esac
 }
 alloc_disk() {
@@ -106,10 +112,15 @@ alloc_disk() {
 		alloc_disk_controller $controllertype
 	fi
 
-	args="$args -drive id=d$diskcount,file=$file,if=none"
-	args="$args -device $dname,drive=d$diskcount"
+	args="$args -drive id=d$diskcount,file=$file,if=$iftype"
+	case "$controllertype" in
+	virtio*) ;;
+	*)
+		args="$args -device $dname,drive=d$diskcount"
+	;;
+	esac
 	case $controllertype in
-	ahci|isa-ide)
+	ahci|isa-ide|virtio)
 		args="${args},bus=${controller}.$_dc"
 	;;
 	lsi53c895a)
@@ -277,7 +288,7 @@ do
 				case "$lhs" in
 				controllertype)
 					case "$rhs" in
-					isa-ide|ahci|lsi53c895a|usb-storage);;
+					isa-ide|ahci|lsi53c895a|usb-storage|virtio-blk-pci);;
 					*) echo "FATAL: lhs=$lhs rhs=$rhs unsupported"
 					   exit 1
 					;;
@@ -375,7 +386,7 @@ do
 		qemu-img create -f qcow2 $xtra $img $imagesize
 	fi
 	# ahci is not bootable on x86, so 1st must be ide
-	if (( firstdisk == 1 && ahciboot == 0 )); then
+	if (( firstdisk == 1 && ahciboot == 0 )) && [ "$controllertype" = "ahci" ]; then
 		args="$args -drive file=$img,index=0,media=disk"
 		((firstdisk++))
 	else
@@ -445,6 +456,8 @@ do
 		nicargs="nic,vlan=$vlan"
 		if [ "${model[vlan]}" ]; then
 			nicargs="$nicargs,model=${model[vlan]}"
+		else
+			nicargs="$nicargs,model=virtio"
 		fi
 		if [ "${macaddr[vlan]}" ]; then
 			nicargs="$nicargs,macaddr=${macaddr[vlan]}"

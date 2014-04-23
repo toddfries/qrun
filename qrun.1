@@ -119,12 +119,20 @@ options may be both used if desired.
 .It Fl o Ar bridge=interface,model=nicmodel,macaddr=52:54:01:00:XX:XX
 .It Fl o Ar netcfg=string,model=nicmodel,macaddr=52:54:01:00:XX:XX
 .It Fl o Ar console=com0,monitor=stdio,serial=unix,vnc=[::]:3
+.It Fl o Ar controllertype=<ctype>
 Provides a more advanced usage of the
 .Fl b
 and
 .Fl n
 options as well as enabling a serial console to be presented at a terminal
 prompt.
+<ctype> can be one of
+.Pp
+.It Ar ahci
+.It Ar isa-ide
+.It Ar lsi53c895a
+.It Ar virtio-blk-pci
+.It Ar usb-storage
 If combined with the
 .Fl p
 option and an

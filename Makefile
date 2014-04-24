@@ -22,6 +22,6 @@ README.md: ${.CURDIR}/qrun.1
 	@make ${.CURDIR}/README.md
 
 ${.CURDIR}/README.md: ${.CURDIR}/qrun.1
-	mandoc -Thtml ${.CURDIR}/qrun.1 > ${.CURDIR}/README.md
+	mandoc -Thtml ${.CURDIR}/qrun.1 | grep -v DOCTYPE > ${.CURDIR}/README.md
 
 .include <bsd.prog.mk>

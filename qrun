@@ -16,6 +16,7 @@
 
 args=""
 console="-monitor stdio"
+console=""
 imagesize="16G"
 image=""
 diskcount=0
@@ -112,7 +113,7 @@ alloc_disk() {
 		alloc_disk_controller $controllertype
 	fi
 
-	args="$args -drive id=d$diskcount,file=$file,if=$iftype"
+	args="$args -drive id=d$diskcount,file=$file,if=$iftype$ximg"
 	case "$controllertype" in
 	virtio*) ;;
 	*)
@@ -325,7 +326,7 @@ if ! [ "$images" ]; then
 	echo "WARNING: No drive image specified, use '-i foo.hda' for example"
 fi
 
-usbadd="-usb -usbdevice tablet"
+usbadd="-usb -device usb-tablet"
 qemu="false"
 mode=${mode:-i386}
 case "$mode" in
@@ -385,9 +386,13 @@ do
 		fi
 		qemu-img create -f qcow2 $xtra $img $imagesize
 	fi
+	ximg=""
+	if [ -b "$img" -o -c "$img" ]; then
+		ximg=",format=raw"
+	fi
 	# ahci is not bootable on x86, so 1st must be ide
 	if (( firstdisk == 1 && ahciboot == 0 )) && [ "$controllertype" = "ahci" ]; then
-		args="$args -drive file=$img,index=0,media=disk"
+		args="$args -drive file=$img,index=0,media=disk$ximg"
 		((firstdisk++))
 	else
 		# 32 is scsibus

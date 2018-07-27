@@ -389,6 +389,11 @@ do
 	ximg=""
 	if [ -b "$img" -o -c "$img" ]; then
 		ximg=",format=raw"
+	else
+		case "$(file "$img")" in
+		*Qcow*);;
+		*)ximg=",format=raw"
+		esac
 	fi
 	# ahci is not bootable on x86, so 1st must be ide
 	if (( firstdisk == 1 && ahciboot == 0 )) && [ "$controllertype" = "ahci" ]; then

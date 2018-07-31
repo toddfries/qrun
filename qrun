@@ -63,6 +63,9 @@ alloc_if() {
 	fi
 	echo $type$i
 }
+alloc_usernet() {
+	usernet[vlancount]="1"
+}
 alloc_bridge() {
 	local _g _if name="$1"
 	case "$name" in
@@ -109,19 +112,20 @@ alloc_disk_controller()
 }
 alloc_disk() {
 	local _dc=$((diskcount%maxdisks)) file="$1"
+	local _ct=$controllertype
 	if (( _dc == 0 )); then
-		alloc_disk_controller $controllertype
+		alloc_disk_controller $_ct
 	fi
 
 	args="$args -drive id=d$diskcount,file=$file,if=$iftype$ximg"
-	case "$controllertype" in
+	case "$_ct" in
 	virtio*) ;;
 	*)
 		args="$args -device $dname,drive=d$diskcount"
 	;;
 	esac
-	case $controllertype in
-	ahci|isa-ide|virtio)
+	case $_ct in
+	ahci|isa-ide|ide|virtio)
 		args="${args},bus=${controller}.$_dc"
 	;;
 	lsi53c895a)
@@ -158,14 +162,14 @@ while getopts ':b:C:c:i:M:m:n:o:p:s:u:v' OPT
 do
 	case "$OPT" in
 	b)
-		root_check $OPT
+		root_check
 		alloc_bridge "$OPTARG"
 		fd[vlancount]="$tunfd"
 		((tunfd++))
 		((vlancount++))
 	;;
-	C) cd="$OPTARG";;
-	c) cd="$OPTARG";cdboot=1;;
+	C) cds="$cds $OPTARG";;
+	c) cds="$cds $OPTARG";cdboot=1;;
 	i)
 		[ "$image" ] || image="$OPTARG"
 		images="$images $OPTARG"
@@ -177,7 +181,7 @@ do
 	;;
 	m) memsize="-m $OPTARG";;
 	n)
-		root_check $OPT
+		root_check
 		netcfg[vlancount]="$OPTARG"
 		fd[vlancount]="$tunfd"
 		((tunfd++))
@@ -186,14 +190,38 @@ do
 	p)
 		tftpdir="$OPTARG"
 		tftpimg="/pxeboot"
-		usernet[vlancount]=1
+		alloc_usernet
 		((vlancount++))
 	;;
 	s) imagesize="$OPTARG";;
 	o)
 		case "$OPTARG" in
+		usernet*)
+			echo "usernet OPT=$OPT OPTARG=$OPTARG"
+			for pairs in $(echo "$OPTARG" | sed 's/,/ /g')
+			do
+				rhs=${pairs#*=}
+				lhs=${pairs%%=*}
+				echo "usernet lhs=$lhs rhs=$rhs"
+				case "$lhs" in
+				usernet)
+					alloc_usernet
+				;;
+				model)
+					model[vlancount]="$rhs"
+				;;
+				macaddr)
+					macaddr[vlancount]=$(random_mac $rhs)
+				;;
+				*)
+					echo "Oops, lhs=$lhs rhs=$rhs unsupported"
+				;;
+				esac
+			done
+			((vlancount++))
+		;;
 		bridge*) # bridge=ne0,model=rtl8139,macaddr=52:54:01:00:XX:XX
-			root_check $OPT
+			root_check
 			for pairs in $(echo "$OPTARG" | sed 's/,/ /g')
 			do
 				rhs=${pairs#*=}
@@ -218,7 +246,7 @@ do
 			((vlancount++))
 		;;
 		netcfg*) # netcfg=10.0.7.1/24,model=rtl8139,macaddr=52:54:01:00:XX:XX
-			root_check $OPT
+			root_check
 			for pairs in $(echo "$OPTARG" | sed 's/,/ /g')
 			do
 				rhs=${pairs#*=}
@@ -305,7 +333,7 @@ do
 		esac
 	;;
 	u)
-		root_check $OPT
+		root_check
 		user="$OPTARG"
 	;;
 	v) ((verbose++));;
@@ -316,6 +344,9 @@ do
 	:)
 		echo "FATAL: Missing argument for option -$OPTARG"
 		exit 1
+	;;
+	*)
+		echo "Unsupported option: -$OPT"
 	;;
 	esac
 done
@@ -377,22 +408,92 @@ if [ "${cpu}" ]; then
 	qemu="$qemu -cpu $cpu"
 fi
 
+# XXX for now, this presumes all cdrom files end in .iso and are raw
+
+for cd in $cds
+do
+	if ! [ -e "$cd" ]; then
+	    if [[ $cd == +(ftp|http)'://'* ]]; then
+		cdtmpfile=$(mktemp /tmp/.qrun.cd.XXXXXXXXXX)
+		trap 'rm $cdtmpfile' 0 1 15
+		if ftp -o $cdtmpfile "$cd" > /dev/null 2>&1; then
+			cd="$cdtmpfile"
+		fi
+	    fi
+	fi
+	if ! [ -e "$cd" ]; then
+		echo "Do not know what to do with cd file $cd"
+		continue
+	fi
+	ximg=",cache=none,media=cdrom"
+	if [ -b "$img" -o -c "$img" ]; then
+		ximg="$ximg,format=raw"
+	else
+		ext="$(perl -e '
+			$a=$ARGV[0];
+			if ($a =~ /^.*\.([^\.]+)$/){
+				print lc($1);
+			}' "$img")"
+		case "$ext" in
+		qcow2) ximg="$ximg,format=qcow2";;
+		raw)   ximg="$ximg,format=raw";;
+		iso)   ximg="$ximg,format=raw";;
+		*)
+			echo "Unhandled extension: $ext"
+			ftype="$(file "$img")"
+			case "$ftype" in
+			*Qcow*) ximg="$ximg,format=qcow2";;
+			*)
+				echo "Unhandled ftype: _${ftype}_"
+				ximg="$ximg,format=raw"
+			;;
+			esac
+		;;
+		esac
+	fi
+	args="$args -drive file=$cd,index=2$ximg"
+	#tmpct=$controllertype
+	#tmpiftype=$iftype
+	#controlertype=ide
+	#iftype=none
+	#alloc_disk_controller $controllertype
+	#alloc_disk "$cd"
+	#controllertype=$tmpct
+	#iftype=$tmpiftype
+done
+
 for img in $images
 do
 	if ! [ -e "$img" ]; then
-		xtra=""
 		if [ "${imagesize%T}" != "${imagesize}" ]; then
 			xtra="-o cluster_size=2M"
 		fi
 		qemu-img create -f qcow2 $xtra $img $imagesize
 	fi
-	ximg=""
+	ximg=",cache=none"
 	if [ -b "$img" -o -c "$img" ]; then
-		ximg=",format=raw"
+		ximg="$ximg,format=raw"
 	else
-		case "$(file "$img")" in
-		*Qcow*);;
-		*)ximg=",format=raw"
+		ext="$(perl -e '
+			$a=$ARGV[0];
+			if ($a =~ /^.*\.([^\.]+)$/){
+				print lc($1);
+			}' "$img")"
+		case "$ext" in
+		qcow2) ximg="$ximg,format=qcow2";;
+		raw)   ximg="$ximg,format=raw";;
+		iso)   ximg="$ximg,format=raw,media=cdrom";;
+		*)
+			echo "Unhandled extension: $ext"
+			ftype="$(file "$img")"
+			case "$ftype" in
+			*Qcow*) ximg="$ximg,format=qcow2";;
+			*)
+				echo "Unhandled ftype: _${ftype}_"
+				ximg="$ximg,format=raw"
+			;;
+			esac
+		;;
 		esac
 	fi
 	# ahci is not bootable on x86, so 1st must be ide
@@ -405,19 +506,8 @@ do
 		alloc_disk "$img"
 	fi
 done
-
-if [ "$cd" -a -f "$cd" ]; then
-	args="$args -cdrom $cd"
-else
-	if [[ $cd == +(ftp|http)'://'* ]]; then
-		cdtmpfile=$(mktemp /tmp/.qrun.cd.XXXXXXXXXX)
-		trap 'rm $cdtmpfile' 0 1 15
-		ftp -o $cdtmpfile "$cd" > /dev/null 2>&1 && \
-			args="$args -cdrom $cdtmpfile"
-	fi
-fi
 if [ "$cdboot" ]; then
-	args="$args -boot once=d,order=c"
+	args="$args -boot once=d,order=c,menu=on"
 fi
 
 #args="$args -watchdog i6300esb"
@@ -428,15 +518,17 @@ fi
 vlan=0
 while (( vlan < vlancount ))
 do
+	id=v$vlan
 	if [ "${bridgeif[vlan]}" ]; then
-		nicargs="nic,vlan=$vlan"
+		nicargs="nic,id=$id"
+		devargs="tap,netdev=$id"
 		if [ "${model[vlan]}" ]; then
-			nicargs="$nicargs,model=${model[vlan]}"
+			devargs="$devargs,model=${model[vlan]}"
 		fi
 		if [ "${macaddr[vlan]}" ]; then
-			nicargs="$nicargs,macaddr=${macaddr[vlan]}"
+			devargs="$devargs,macaddr=${macaddr[vlan]}"
 		fi
-		args="$args -net $nicargs -net tap,vlan=$vlan,fd=${fd[vlan]}"
+		args="$args -netdev $nicargs -device $devargs,fd=${fd[vlan]}"
 
 		tunif[vlan]=$(alloc_if tun)
 		ifconfig ${tunif[vlan]} link0
@@ -449,44 +541,49 @@ do
 		ifconfig ${bridgeif[vlan]} up
 	fi
 	if [ "${netcfg[vlan]}" ]; then
-		nicargs="nic,vlan=$vlan"
+		nicargs="nic,id=$id"
+		devargs="tap,netdev=$id"
 		if [ "${model[vlan]}" ]; then
-			nicargs="$nicargs,model=${model[vlan]}"
+			devargs="$devargs,model=${model[vlan]}"
 		fi
 		if [ "${macaddr[vlan]}" ]; then
-			nicargs="$nicargs,macaddr=${macaddr[vlan]}"
+			devargs="$devargs,macaddr=${macaddr[vlan]}"
 		fi
-		args="$args -net $nicargs -net tap,vlan=$vlan,fd=${fd[vlan]}"
+		args="$args -netdev $nicargs -device $devargs,fd=${fd[vlan]}"
 		tunif[vlan]=$(alloc_if tun)
 		ifconfig ${tunif[vlan]} link0
 		ifconfig ${tunif[vlan]} ${netcfg[vlan]}
 		ifconfig ${tunif[vlan]} up
 	fi
 	if [ "${usernet[vlan]}" ]; then
-		nicargs="nic,vlan=$vlan"
+		nicargs="user,id=$id"
+		mymodel=e1000
 		if [ "${model[vlan]}" ]; then
-			nicargs="$nicargs,model=${model[vlan]}"
+			mymodel=${model[vlan]}
 		else
-			nicargs="$nicargs,model=virtio"
+			mymodel="virtio-net"
 		fi
-		if [ "${macaddr[vlan]}" ]; then
-			nicargs="$nicargs,macaddr=${macaddr[vlan]}"
+		devargs="$mymodel,netdev=$id"
+		# macaddr is not a property of '-device virtio-net,...'
+		if [ "$mymodel" != "virtio-net" ]; then
+			if [ "${macaddr[vlan]}" ]; then
+				devargs="$devargs,macaddr=${macaddr[vlan]}"
+			fi
 		fi
 		# XXX calculate local port based on macaddr!
 		#nicargs="$nicargs,hostfwd=tcp:[::1]:2022-:22"
-		userargs="user,vlan=$vlan"
 		if [ "$tftpdir" ]; then
-			userargs="$userargs,tftp=$tftpdir"
+			devargs="$devargs,tftp=$tftpdir"
 			#set -A nicmap n o p
 			#args="$args -boot ${nicmap[vlan]}"
-			args="$args -boot once=n,order=c"
+			args="$args -boot once=n,order=c,menu=on"
 			args="$args -tftp $tftpdir"
 			args="$args -bootp $tftpimg"
 		fi
 		if [ "$tftpimg" ]; then
-			userargs="$userargs,bootfile=$tftpimg"
+			devargs="$devargs,bootfile=$tftpimg"
 		fi
-		args="$args -net $nicargs -net $userargs"
+		args="$args -netdev $nicargs -device $devargs"
 	fi
 	((vlan++))
 done

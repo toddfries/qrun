@@ -28,7 +28,7 @@
 .Op Fl M Ar mode
 .Op Fl m Ar memsize
 .Op Fl n Ar string
-.Op Fl o Cm bridge \*(Ba console \*(Ba netcfg
+.Op Fl o Cm usernet \*(Ba bridge \*(Ba console \*(Ba netcfg
 .Op Fl p Ar path
 .Op Fl s Ar size
 .Op Fl u Ar user
@@ -120,8 +120,9 @@ and
 .Fl b
 options may be both used if desired.
 .Pp
-.It Fl o Ar bridge=interface,model=nicmodel,macaddr=52:54:01:00:XX:XX
-.It Fl o Ar netcfg=string,model=nicmodel,macaddr=52:54:01:00:XX:XX
+.It Fl o Ar usernet,model=<nicmodel>,macaddr=52:54:01:00:XX:XX
+.It Fl o Ar bridge=interface,model=<nicmodel>,macaddr=52:54:01:00:XX:XX
+.It Fl o Ar netcfg=string,model=<nicmodel>,macaddr=52:54:01:00:XX:XX
 .It Fl o Ar console=com0,monitor=stdio,serial=unix,vnc=[::]:3
 .It Fl o Ar controllertype=<ctype>
 Provides a more advanced usage of the
@@ -130,6 +131,13 @@ and
 .Fl n
 options as well as enabling a serial console to be presented at a terminal
 prompt.
+<nicmodel> can be one of
+.Pp
+.It Ar e1000
+.It Ar rtl8139
+.It Ar virtio-net
+.it Ar etc...
+.Pp
 <ctype> can be one of
 .Pp
 .It Ar ahci

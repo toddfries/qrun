@@ -15,6 +15,7 @@
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 args=""
+args="$args -rtc base=utc"
 console="-monitor stdio"
 console=""
 imagesize="16G"
@@ -317,7 +318,7 @@ do
 				case "$lhs" in
 				controllertype)
 					case "$rhs" in
-					isa-ide|ahci|lsi53c895a|usb-storage|virtio-blk-pci);;
+					isa-ide|ahci|lsi53c895a|scsi-hd|usb-storage|virtio-blk-pci);;
 					*) echo "FATAL: lhs=$lhs rhs=$rhs unsupported"
 					   exit 1
 					;;
@@ -395,8 +396,13 @@ sparc)
 	ahciboot=0
 ;;
 sparc64)
-	qemu="qemu-system-sparc64"
-	#args="$args $usbadd" # XXX really?
+	qemu="qemu-system-sparc64 -machine sun4u,usb=off"
+	# XXX fix "No 'usb-bus' found for device 'usb-tablet'"
+	#args="$args $usbadd"
+	args="$args -realtime mlock=off"
+	args="$args -smp 1,sockets=1,cores=1,threads=1"
+	args="$args -msg timestamp=on"
+	args="$args -net nic,model=ne2k_pci -net user"
 	ahciboot=0
 ;;
 *)
@@ -425,41 +431,33 @@ do
 		echo "Do not know what to do with cd file $cd"
 		continue
 	fi
-	ximg=",cache=none,media=cdrom"
-	if [ -b "$img" -o -c "$img" ]; then
-		ximg="$ximg,format=raw"
+	xcd=",cache=none,media=cdrom"
+	if [ -b "$cd" -o -c "$cd" ]; then
+		xcd="$xcd,format=raw"
 	else
 		ext="$(perl -e '
 			$a=$ARGV[0];
 			if ($a =~ /^.*\.([^\.]+)$/){
 				print lc($1);
-			}' "$img")"
+			}' "$cd")"
 		case "$ext" in
-		qcow2) ximg="$ximg,format=qcow2";;
-		raw)   ximg="$ximg,format=raw";;
-		iso)   ximg="$ximg,format=raw";;
+		qcow2) xcd="$xcd,format=qcow2";;
+		raw)   xcd="$xcd,format=raw";;
+		iso)   xcd="$xcd,format=raw";;
 		*)
 			echo "Unhandled extension: $ext"
-			ftype="$(file "$img")"
+			ftype="$(file "$cd")"
 			case "$ftype" in
-			*Qcow*) ximg="$ximg,format=qcow2";;
+			*Qcow*) xcd="$xcd,format=qcow2";;
 			*)
 				echo "Unhandled ftype: _${ftype}_"
-				ximg="$ximg,format=raw"
+				xcd="$xcd,format=raw"
 			;;
 			esac
 		;;
 		esac
 	fi
-	args="$args -drive file=$cd,index=2$ximg"
-	#tmpct=$controllertype
-	#tmpiftype=$iftype
-	#controlertype=ide
-	#iftype=none
-	#alloc_disk_controller $controllertype
-	#alloc_disk "$cd"
-	#controllertype=$tmpct
-	#iftype=$tmpiftype
+	args="$args -drive file=$cd,index=2$xcd"
 done
 
 for img in $images
